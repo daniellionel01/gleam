@@ -121,6 +121,7 @@ pub fn setup(
             PackageKind::Dependency => TargetSupport::NotEnforced,
         },
         no_print_progress,
+        forbid_shadowing: root_config.forbid_shadowing,
     };
 
     let built = crate::build::main(paths, options, manifest)?;

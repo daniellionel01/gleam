@@ -7,6 +7,7 @@ use gleam_core::{
 use std::process::Command;
 
 pub fn command(paths: &ProjectPaths) -> Result<(), Error> {
+    let config = crate::config::root_config(paths)?;
     // Build project
     let _ = crate::build::main(
         paths,
@@ -18,6 +19,7 @@ pub fn command(paths: &ProjectPaths) -> Result<(), Error> {
             mode: Mode::Dev,
             target: Some(Target::Erlang),
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         },
         crate::build::download_dependencies(paths, crate::cli::Reporter::new())?,
     )?;

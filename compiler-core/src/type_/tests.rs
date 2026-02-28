@@ -181,6 +181,7 @@ fn get_warnings(
     deps: Vec<DependencyModule<'_>>,
     target: Target,
     gleam_version: Option<Range<Version>>,
+    forbid_shadowing: bool,
 ) -> Vec<crate::warning::Warning> {
     let warnings = VectorWarningEmitterIO::default();
     _ = compile_module_with_opts(
@@ -191,6 +192,7 @@ fn get_warnings(
         target,
         TargetSupport::NotEnforced,
         gleam_version,
+        forbid_shadowing,
     );
     warnings.take().into_iter().collect_vec()
 }
@@ -200,8 +202,15 @@ pub(crate) fn get_printed_warnings(
     deps: Vec<DependencyModule<'_>>,
     target: Target,
     gleam_version: Option<Range<Version>>,
+    forbid_shadowing: bool,
 ) -> String {
-    print_warnings(get_warnings(src, deps, target, gleam_version))
+    print_warnings(get_warnings(
+        src,
+        deps,
+        target,
+        gleam_version,
+        forbid_shadowing,
+    ))
 }
 
 fn print_warnings(warnings: Vec<crate::warning::Warning>) -> String {
@@ -215,7 +224,7 @@ fn print_warnings(warnings: Vec<crate::warning::Warning>) -> String {
 #[macro_export]
 macro_rules! assert_warning {
     ($src:expr) => {
-        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], crate::build::Target::Erlang, None);
+        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], crate::build::Target::Erlang, None, false);
         assert!(!warning.is_empty());
         let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
         insta::assert_snapshot!(insta::internals::AutoName, output, $src);
@@ -228,7 +237,8 @@ macro_rules! assert_warning {
                 $(("thepackage", $name, $module_src)),*
             ],
             crate::build::Target::Erlang,
-            None
+            None,
+            false,
         );
         assert!(!warning.is_empty());
 
@@ -245,7 +255,8 @@ macro_rules! assert_warning {
             $src,
             vec![$(($package, $name, $module_src)),*],
             crate::build::Target::Erlang,
-            None
+            None,
+            false,
         );
         assert!(!warning.is_empty());
 
@@ -266,6 +277,7 @@ macro_rules! assert_js_warning {
             vec![],
             crate::build::Target::JavaScript,
             None,
+            false,
         );
         assert!(!warning.is_empty());
         let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
@@ -281,8 +293,57 @@ macro_rules! assert_js_no_warnings {
             vec![],
             crate::build::Target::JavaScript,
             None,
+            false,
         );
         assert!(warning.is_empty());
+    };
+}
+
+#[macro_export]
+macro_rules! assert_warning_with_forbid_shadowing {
+    ($src:expr) => {
+        let warning = $crate::type_::tests::get_printed_warnings($src, vec![], crate::build::Target::Erlang, None, true);
+        assert!(!warning.is_empty());
+        let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+
+    ($(($name:expr, $module_src:literal)),+, $src:literal $(,)?) => {
+        let warning = $crate::type_::tests::get_printed_warnings(
+            $src,
+            vec![
+                $(("thepackage", $name, $module_src)),*
+            ],
+            crate::build::Target::Erlang,
+            None,
+            true,
+        );
+        assert!(!warning.is_empty());
+
+        let mut output = String::from("----- SOURCE CODE\n");
+        for (name, src) in [$(($name, $module_src)),*] {
+            output.push_str(&format!("-- {name}.gleam\n{src}\n\n"));
+        }
+        output.push_str(&format!("-- main.gleam\n{}\n\n----- WARNING\n{warning}", $src));
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
+    };
+
+    ($(($package:expr, $name:expr, $module_src:literal)),+, $src:expr) => {
+        let warning = $crate::type_::tests::get_printed_warnings(
+            $src,
+            vec![$(($package, $name, $module_src)),*],
+            crate::build::Target::Erlang,
+            None,
+            true,
+        );
+        assert!(!warning.is_empty());
+
+        let mut output = String::from("----- SOURCE CODE\n");
+        for (name, src) in [$(($name, $module_src)),*] {
+            output.push_str(&format!("-- {name}.gleam\n{src}\n\n"));
+        }
+        output.push_str(&format!("-- main.gleam\n{}\n\n----- WARNING\n{warning}", $src));
+        insta::assert_snapshot!(insta::internals::AutoName, output, $src);
     };
 }
 
@@ -294,6 +355,7 @@ macro_rules! assert_warnings_with_gleam_version {
             vec![],
             crate::build::Target::Erlang,
             Some($gleam_version),
+            false,
         );
         assert!(!warning.is_empty());
         let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
@@ -309,6 +371,7 @@ macro_rules! assert_js_warnings_with_gleam_version {
             vec![],
             crate::build::Target::JavaScript,
             Some($gleam_version),
+            false,
         );
         assert!(!warning.is_empty());
         let output = format!("----- SOURCE CODE\n{}\n\n----- WARNING\n{}", $src, warning);
@@ -324,6 +387,7 @@ macro_rules! assert_js_no_warnings_with_gleam_version {
             vec![],
             crate::build::Target::JavaScript,
             Some($gleam_version),
+            false,
         );
         assert!(warning.is_empty());
     };
@@ -332,7 +396,7 @@ macro_rules! assert_js_no_warnings_with_gleam_version {
 #[macro_export]
 macro_rules! assert_no_warnings {
     ($src:expr $(,)?) => {
-        let warnings = $crate::type_::tests::get_warnings($src, vec![], crate::build::Target::Erlang, None);
+        let warnings = $crate::type_::tests::get_warnings($src, vec![], crate::build::Target::Erlang, None, false);
         assert_eq!(warnings, vec![]);
     };
     ($(($name:expr, $module_src:literal)),+, $src:expr $(,)?) => {
@@ -341,6 +405,7 @@ macro_rules! assert_no_warnings {
             vec![$(("thepackage", $name, $module_src)),*],
             crate::build::Target::Erlang,
             None,
+            false,
         );
         assert_eq!(warnings, vec![]);
     };
@@ -350,6 +415,7 @@ macro_rules! assert_no_warnings {
             vec![$(($package, $name, $module_src)),*],
             crate::build::Target::Erlang,
             None,
+            false,
         );
         assert_eq!(warnings, vec![]);
     };
@@ -378,6 +444,7 @@ fn compile_statement_sequence(
         target_support: TargetSupport::Enforced,
         current_origin: Origin::Src,
         dev_dependencies: &dev_dependencies,
+        forbid_shadowing: false,
     }
     .build();
     let res = ExprTyper::new(
@@ -435,6 +502,7 @@ pub fn infer_module_with_target(
         target,
         TargetSupport::NotEnforced,
         None,
+        false,
     )
     .expect("should successfully infer");
     ast.type_info
@@ -463,6 +531,7 @@ pub fn compile_module(
         Target::Erlang,
         TargetSupport::NotEnforced,
         None,
+        false,
     )
 }
 
@@ -474,6 +543,7 @@ pub fn compile_module_with_opts(
     target: Target,
     target_support: TargetSupport,
     gleam_version: Option<Range<Version>>,
+    forbid_shadowing: bool,
 ) -> Outcome<TypedModule, Vec1<super::Error>> {
     let ids = UniqueIdGenerator::new();
     let mut modules = im::HashMap::new();
@@ -524,6 +594,7 @@ pub fn compile_module_with_opts(
     let mut config = PackageConfig::default();
     config.name = "thepackage".into();
     config.gleam_version = gleam_version.map(GleamVersion::from_pubgrub);
+    config.forbid_shadowing = forbid_shadowing;
 
     let warnings = TypeWarningEmitter::new("/src/warning/wrn.gleam".into(), src.into(), emitter);
     crate::analyse::ModuleAnalyzerConstructor::<()> {
@@ -557,6 +628,7 @@ pub fn module_error_with_target(
         target,
         TargetSupport::NotEnforced,
         None,
+        false,
     );
 
     let (error, names) = match outcome {
@@ -591,6 +663,7 @@ pub fn internal_module_error_with_target(
         target,
         TargetSupport::NotEnforced,
         None,
+        false,
     );
 
     let (error, names) = match outcome {
@@ -3062,10 +3135,13 @@ fn assert_suitable_main_function_javascript_not_supported() {
             purity: Purity::Impure,
         },
     };
-    assert!(
-        assert_suitable_main_function(&value, &"module".into(), Origin::Src, Target::JavaScript)
-            .is_err(),
-    );
+    assert!(assert_suitable_main_function(
+        &value,
+        &"module".into(),
+        Origin::Src,
+        Target::JavaScript
+    )
+    .is_err(),);
 }
 
 #[test]

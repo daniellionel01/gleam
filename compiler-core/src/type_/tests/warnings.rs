@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     assert_js_no_warnings, assert_js_warning, assert_no_warnings, assert_warning,
-    assert_warnings_with_gleam_version,
+    assert_warning_with_forbid_shadowing, assert_warnings_with_gleam_version,
 };
 
 #[test]
@@ -470,8 +470,8 @@ fn even_number_of_multiple_integer_negations_raise_a_single_warning() {
 }
 
 #[test]
-fn odd_number_of_multiple_integer_negations_raise_a_single_warning_that_highlights_the_unnecessary_ones()
- {
+fn odd_number_of_multiple_integer_negations_raise_a_single_warning_that_highlights_the_unnecessary_ones(
+) {
     assert_warning!("pub fn main() { let _ = -----7 }");
 }
 
@@ -481,8 +481,8 @@ fn even_number_of_multiple_bool_negations_raise_a_single_warning() {
 }
 
 #[test]
-fn odd_number_of_multiple_bool_negations_raise_a_single_warning_that_highlights_the_unnecessary_ones()
- {
+fn odd_number_of_multiple_bool_negations_raise_a_single_warning_that_highlights_the_unnecessary_ones(
+) {
     assert_warning!("pub fn main() { let _ = !!!!!False }");
 }
 
@@ -4164,7 +4164,7 @@ pub fn main() {
 //https://github.com/gleam-lang/gleam/issues/4666
 #[test]
 fn shadow_imported_function() {
-    assert_warning!(
+    assert_warning_with_forbid_shadowing!(
         (
             "thepackage",
             "module",
@@ -4182,7 +4182,7 @@ pub fn wibble() { Nil }
 //https://github.com/gleam-lang/gleam/issues/4666
 #[test]
 fn shadow_imported_constant() {
-    assert_warning!(
+    assert_warning_with_forbid_shadowing!(
         (
             "thepackage",
             "module",
@@ -4829,4 +4829,88 @@ pub fn main(x) {
   }
 }",
     );
+}
+
+#[test]
+fn local_variable_shadows_variable() {
+    let warning = get_printed_warnings(
+        "
+pub fn main() {
+  let x = 1
+  let x = 2
+  x
+}",
+        vec![],
+        Target::Erlang,
+        None,
+        true,
+    );
+    assert!(!warning.is_empty());
+}
+
+#[test]
+fn local_variable_shadowing_allowed_when_disabled() {
+    let warnings = get_warnings(
+        "
+pub fn main() {
+  let _x = 1
+  let _x = 2
+}",
+        vec![],
+        Target::Erlang,
+        None,
+        false,
+    );
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn underscore_variable_no_shadowing_warning() {
+    let warnings = get_warnings(
+        "
+pub fn main() {
+  let _x = 1
+  let _x = 2
+}",
+        vec![],
+        Target::Erlang,
+        None,
+        true,
+    );
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn pattern_variable_shadows_variable() {
+    let warning = get_printed_warnings(
+        "
+pub fn main() {
+  let x = 1
+  case 2 {
+    x -> x
+  }
+}",
+        vec![],
+        Target::Erlang,
+        None,
+        true,
+    );
+    assert!(!warning.is_empty());
+}
+
+#[test]
+fn function_argument_shadows_variable() {
+    let warning = get_printed_warnings(
+        "
+pub fn main() {
+  let x = 1
+  let func = fn(x) { x }
+  func(2)
+}",
+        vec![],
+        Target::Erlang,
+        None,
+        true,
+    );
+    assert!(!warning.is_empty());
 }

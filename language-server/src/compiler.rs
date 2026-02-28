@@ -3,7 +3,6 @@ use ecow::EcoString;
 use itertools::Itertools;
 
 use gleam_core::{
-    Error, Result, Warning,
     analyse::TargetSupport,
     build::{self, Mode, Module, NullTelemetry, Outcome, ProjectCompiler},
     config::PackageConfig,
@@ -13,6 +12,7 @@ use gleam_core::{
     paths::ProjectPaths,
     type_::ModuleInterface,
     warning::VectorWarningEmitterIO,
+    Error, Result, Warning,
 };
 use std::{collections::HashMap, rc::Rc};
 
@@ -72,6 +72,7 @@ where
             compile: build::Compile::All,
             root_target_support: TargetSupport::Enforced,
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         };
         let mut project_compiler = ProjectCompiler::new(
             config,

@@ -169,11 +169,11 @@ fn package_from_module(module: Module) -> Package {
             erlang: ErlangConfig::default(),
             javascript: JavaScriptConfig::default(),
             target: Target::Erlang,
-            internal_modules: Some(vec![
-                GlobBuilder::new("internals/*")
-                    .build()
-                    .expect("internals glob"),
-            ]),
+            internal_modules: Some(vec![GlobBuilder::new("internals/*")
+                .build()
+                .expect("internals glob")]),
+            tools: Default::default(),
+            forbid_shadowing: false,
         },
         cached_module_names: Vec::new(),
         modules: vec![module],

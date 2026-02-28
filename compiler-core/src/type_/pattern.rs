@@ -222,13 +222,25 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     | ValueConstructorVariant::Record { .. } => VariableOrigin::generated(),
                 };
 
+                let variable_location = variable.definition_location().span;
+
                 // This variable is only inferred in this branch of the case expression
-                self.environment.insert_local_variable(
+                let shadowing = self.environment.insert_local_variable(
                     name.clone(),
-                    variable.definition_location().span,
+                    variable_location,
                     origin,
                     type_,
                 );
+
+                if let Some(previous_location) = shadowing {
+                    if self.environment.forbid_shadowing {
+                        self.problems.warning(Warning::LocalVariableShadowsVariable {
+                            location: variable_location,
+                            name: name.clone(),
+                            previous_location,
+                        });
+                    }
+                }
             }
 
             PatternMode::Alternative(_) => {
@@ -407,8 +419,18 @@ impl<'a, 'b> PatternTyper<'a, 'b> {
                     .init_usage(name.clone(), origin.clone(), location, self.problems);
             }
 
-            self.environment
-                .insert_local_variable(name, location, origin, type_);
+            let shadowing = self.environment
+                .insert_local_variable(name.clone(), location, origin, type_);
+
+            if let Some(previous_location) = shadowing {
+                if self.environment.forbid_shadowing {
+                    self.problems.warning(Warning::LocalVariableShadowsVariable {
+                        location,
+                        name,
+                        previous_location,
+                    });
+                }
+            }
         }
     }
 

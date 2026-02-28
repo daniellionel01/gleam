@@ -23,6 +23,7 @@ pub struct EnvironmentArguments<'a> {
     pub target_support: TargetSupport,
     pub current_origin: Origin,
     pub dev_dependencies: &'a HashSet<EcoString>,
+    pub forbid_shadowing: bool,
 }
 
 impl<'a> EnvironmentArguments<'a> {
@@ -92,6 +93,8 @@ pub struct Environment<'a> {
     pub references: ReferenceTracker,
 
     pub dev_dependencies: &'a HashSet<EcoString>,
+
+    pub forbid_shadowing: bool,
 }
 
 #[derive(Debug)]
@@ -114,6 +117,7 @@ impl<'a> Environment<'a> {
             target_support,
             current_origin: origin,
             dev_dependencies,
+            forbid_shadowing,
         }: EnvironmentArguments<'a>,
     ) -> Self {
         let prelude = importable_modules
@@ -147,6 +151,7 @@ impl<'a> Environment<'a> {
             echo_found: false,
             references: ReferenceTracker::new(),
             dev_dependencies,
+            forbid_shadowing,
         }
     }
 
@@ -272,6 +277,9 @@ impl Environment<'_> {
     }
 
     /// Insert a variable in the current scope.
+    /// Returns the location of the previous variable if this one shadows it.
+    /// Variables starting with `_` are considered intentionally discarded and do not
+    /// count as shadowing.
     ///
     pub fn insert_local_variable(
         &mut self,
@@ -279,11 +287,19 @@ impl Environment<'_> {
         location: SrcSpan,
         origin: VariableOrigin,
         type_: Arc<Type>,
-    ) {
+    ) -> Option<SrcSpan> {
+        let previous_location = if name.starts_with('_') {
+            None
+        } else {
+            self.scope
+                .get(&name)
+                .map(|v| v.variant.definition_location())
+        };
         let _ = self.scope.insert(
             name,
             ValueConstructor::local_variable(location, origin, type_),
         );
+        previous_location
     }
 
     /// Insert a variable in the current scope.

@@ -159,6 +159,10 @@ enum Command {
         /// Don't print progress information
         #[clap(long)]
         no_print_progress: bool,
+
+        /// Warn when a variable shadows another variable in scope
+        #[arg(long)]
+        forbid_shadowing: bool,
     },
 
     /// Type check the project
@@ -671,9 +675,10 @@ fn parse_and_run_command() -> Result<(), Error> {
             target,
             warnings_as_errors,
             no_print_progress,
+            forbid_shadowing,
         } => {
             let paths = find_project_paths()?;
-            command_build(&paths, target, warnings_as_errors, no_print_progress)
+            command_build(&paths, target, warnings_as_errors, no_print_progress, forbid_shadowing)
         }
 
         Command::Check { target } => {
@@ -866,6 +871,7 @@ fn parse_and_run_command() -> Result<(), Error> {
 }
 
 fn command_check(paths: &ProjectPaths, target: Option<Target>) -> Result<()> {
+    let config = root_config(paths)?;
     let _ = build::main(
         paths,
         Options {
@@ -876,6 +882,7 @@ fn command_check(paths: &ProjectPaths, target: Option<Target>) -> Result<()> {
             mode: Mode::Dev,
             target,
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         },
         build::download_dependencies(paths, cli::Reporter::new())?,
     )?;
@@ -887,6 +894,7 @@ fn command_build(
     target: Option<Target>,
     warnings_as_errors: bool,
     no_print_progress: bool,
+    forbid_shadowing: bool,
 ) -> Result<()> {
     let manifest = if no_print_progress {
         build::download_dependencies(paths, NullTelemetry)?
@@ -903,6 +911,7 @@ fn command_build(
             mode: Mode::Dev,
             target,
             no_print_progress,
+            forbid_shadowing,
         },
         manifest,
     )?;

@@ -1,4 +1,4 @@
-use crate::{assert_no_warnings, assert_warning};
+use crate::{assert_no_warnings, assert_warning, assert_warning_with_forbid_shadowing};
 
 #[test]
 fn unused_recursive_function() {
@@ -428,7 +428,7 @@ pub fn used() -> Wibble {
 
 #[test]
 fn shadowed_imported_value_marked_unused() {
-    assert_warning!(
+    assert_warning_with_forbid_shadowing!(
         (
             "wibble",
             "
@@ -445,7 +445,7 @@ pub const wibble = 2
 
 #[test]
 fn used_shadowed_imported_value() {
-    assert_warning!(
+    assert_warning_with_forbid_shadowing!(
         (
             "thepackage",
             "wibble",

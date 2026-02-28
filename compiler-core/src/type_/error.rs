@@ -1,13 +1,13 @@
 use super::{
-    FieldAccessUsage,
     expression::{ArgumentKind, CallKind},
+    FieldAccessUsage,
 };
 use crate::{
     ast::{BinOp, BitArraySegmentTruncation, Layer, SrcSpan, TodoKind},
     build::Target,
     exhaustiveness::ImpossibleBitArraySegmentPattern,
     parse::LiteralFloatValue,
-    type_::{Type, expression::ComparisonOutcome},
+    type_::{expression::ComparisonOutcome, Type},
 };
 
 use camino::Utf8PathBuf;
@@ -1103,6 +1103,13 @@ pub enum Warning {
         name: EcoString,
     },
 
+    /// A local variable shadows another variable in scope.
+    LocalVariableShadowsVariable {
+        location: SrcSpan,
+        name: EcoString,
+        previous_location: SrcSpan,
+    },
+
     /// This warning is raised when we perform a comparison that the compiler
     /// can tell is always going to succeed or fail. For example:
     ///
@@ -1401,6 +1408,7 @@ impl Warning {
             | Warning::AssertLiteralBool { location, .. }
             | Warning::BitArraySegmentTruncatedValue { location, .. }
             | Warning::TopLevelDefinitionShadowsImport { location, .. }
+            | Warning::LocalVariableShadowsVariable { location, .. }
             | Warning::UnusedDiscardPattern { location, .. }
             | Warning::ModuleImportedTwice {
                 second: location, ..

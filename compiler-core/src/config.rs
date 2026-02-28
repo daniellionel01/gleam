@@ -1,7 +1,7 @@
 mod stale_package_remover;
 use crate::error::{FileIoAction, FileKind};
-use crate::io::FileSystemReader;
 use crate::io::ordered_map;
+use crate::io::FileSystemReader;
 use crate::manifest::Manifest;
 use crate::requirement::Requirement;
 use crate::version::COMPILER_VERSION;
@@ -179,6 +179,13 @@ pub struct PackageConfig {
     pub target: Target,
     #[serde(default)]
     pub internal_modules: Option<Vec<Glob>>,
+    /// This entry contains values from [tools] table, which is the only way
+    /// for tools to store configuration inside package config, other unknown
+    /// values are denied. It isn't used anywhere in the compiler and build tool.
+    #[serde(default)]
+    pub forbid_shadowing: bool,
+    #[serde(default)]
+    pub tools: Table,
 }
 
 pub fn serialise_gleam_version<S>(
@@ -702,6 +709,8 @@ impl Default for PackageConfig {
             links: Default::default(),
             internal_modules: Default::default(),
             target: Target::Erlang,
+            forbid_shadowing: Default::default(),
+            tools: Default::default(),
         }
     }
 }
@@ -990,7 +999,7 @@ pub struct Link {
 // Note we don't use http-serde since we also want to validate the scheme and host is set.
 mod uri_serde {
     use http::uri::InvalidUri;
-    use serde::{Deserialize, Deserializer, de::Error as _};
+    use serde::{de::Error as _, Deserialize, Deserializer};
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<http::Uri, D::Error>
     where
@@ -1041,7 +1050,7 @@ mod uri_serde {
 // This prefixes https as a default in the event no scheme was provided
 mod uri_serde_default_https {
     use http::uri::InvalidUri;
-    use serde::{Deserialize, Deserializer, de::Error as _};
+    use serde::{de::Error as _, Deserialize, Deserializer};
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<http::Uri, D::Error>
     where
