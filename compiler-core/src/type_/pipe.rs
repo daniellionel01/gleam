@@ -431,7 +431,7 @@ fn new_pipeline_assignment(
 ) -> TypedPipelineAssignment {
     let location = expression.location();
     // Insert the variable for use in type checking the rest of the pipeline
-    expr_typer.environment.insert_local_variable(
+    let _ = expr_typer.environment.insert_local_variable(
         PIPE_VARIABLE.into(),
         location,
         VariableOrigin::generated(),

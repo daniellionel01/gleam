@@ -8669,6 +8669,7 @@ impl<'a> RemoveUnusedImports<'a> {
                 | type_::Warning::BitArraySegmentTruncatedValue { .. }
                 | type_::Warning::ModuleImportedTwice { .. }
                 | type_::Warning::TopLevelDefinitionShadowsImport { .. }
+                | type_::Warning::LocalVariableShadowsVariable { .. }
                 | type_::Warning::RedundantComparison { .. }
                 | type_::Warning::UnusedRecursiveArgument { .. } => None,
             })

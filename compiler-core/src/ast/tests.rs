@@ -9,7 +9,7 @@ use crate::config::PackageConfig;
 use crate::line_numbers::LineNumbers;
 use crate::type_::error::{VariableDeclaration, VariableOrigin, VariableSyntax};
 use crate::type_::expression::{FunctionDefinition, Purity};
-use crate::type_::{Deprecation, PRELUDE_MODULE_NAME, Problems};
+use crate::type_::{Deprecation, Problems, PRELUDE_MODULE_NAME};
 use crate::warning::WarningEmitter;
 use crate::{
     ast::{SrcSpan, TypedExpr},
@@ -89,6 +89,7 @@ fn compile_expression(src: &str) -> TypedStatement {
         target_support: TargetSupport::Enforced,
         current_origin: Origin::Src,
         dev_dependencies: &dev_dependencies,
+        forbid_shadowing: false,
     }
     .build();
 

@@ -4946,12 +4946,22 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         };
 
                         // Insert a variable for the argument into the environment
-                        body_typer.environment.insert_local_variable(
+                        let shadowing = body_typer.environment.insert_local_variable(
                             name.clone(),
                             *location,
                             origin.clone(),
                             argument.type_.clone(),
                         );
+
+                        if let Some(previous_location) = shadowing {
+                            if body_typer.environment.forbid_shadowing {
+                                body_typer.problems.warning(Warning::LocalVariableShadowsVariable {
+                                    location: *location,
+                                    name: name.clone(),
+                                    previous_location,
+                                });
+                            }
+                        }
 
                         if !body.is_empty() {
                             // Register the variable in the usage tracker so that we

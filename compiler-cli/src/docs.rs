@@ -8,7 +8,6 @@ use ecow::EcoString;
 
 use crate::{cli, fs::ProjectIO, http::HttpClient};
 use gleam_core::{
-    Result,
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Package, Target},
     config::{DocsPage, PackageConfig},
@@ -18,7 +17,7 @@ use gleam_core::{
     io::HttpClient as _,
     manifest::ManifestPackageSource,
     paths::ProjectPaths,
-    type_,
+    type_, Result,
 };
 
 pub fn remove(package: String, version: String) -> Result<()> {
@@ -83,6 +82,7 @@ pub fn build(paths: &ProjectPaths, options: BuildOptions) -> Result<()> {
             warnings_as_errors: false,
             root_target_support: TargetSupport::Enforced,
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         },
         manifest,
     )?;
@@ -205,6 +205,7 @@ pub fn publish(paths: &ProjectPaths) -> Result<()> {
             mode: Mode::Prod,
             target: None,
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         },
         manifest,
     )?;

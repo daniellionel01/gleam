@@ -230,6 +230,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
             target_support: self.target_support,
             current_origin: self.origin,
             dev_dependencies: self.dev_dependencies,
+            forbid_shadowing: self.package_config.forbid_shadowing,
         }
         .build();
 
@@ -1724,7 +1725,7 @@ impl<'a, A> ModuleAnalyzer<'a, A> {
         location: SrcSpan,
         environment: &mut Environment<'_>,
     ) {
-        if environment.unqualified_imported_names.contains_key(name) {
+        if environment.forbid_shadowing && environment.unqualified_imported_names.contains_key(name) {
             self.problems
                 .warning(Warning::TopLevelDefinitionShadowsImport {
                     location,

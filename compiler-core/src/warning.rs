@@ -20,7 +20,7 @@ use ecow::EcoString;
 use itertools::Itertools;
 use std::{
     io::Write,
-    sync::{Arc, atomic::Ordering},
+    sync::{atomic::Ordering, Arc},
 };
 use std::{rc::Rc, sync::atomic::AtomicUsize};
 use termcolor::Buffer;
@@ -1482,6 +1482,35 @@ The imported value could not be used in this module anyway."
                             extra_labels: Vec::new(),
                         }),
                         hint: Some("Either rename the definition or remove the import.".into()),
+                    }
+                }
+
+                type_::Warning::LocalVariableShadowsVariable {
+                    location,
+                    name,
+                    previous_location,
+                } => {
+                    let text = format!("The variable `{name}` shadows an existing variable.");
+                    Diagnostic {
+                        title: "Shadowed Variable".into(),
+                        text: wrap(&text),
+                        level: diagnostic::Level::Warning,
+                        location: Some(Location {
+                            path: path.clone(),
+                            src: src.clone(),
+                            label: diagnostic::Label {
+                                text: Some(wrap(&format!("`{name}` is defined here"))),
+                                span: *location,
+                            },
+                            extra_labels: vec![ExtraLabel {
+                                src_info: None,
+                                label: diagnostic::Label {
+                                    text: Some(wrap("Previous definition was here")),
+                                    span: *previous_location,
+                                },
+                            }],
+                        }),
+                        hint: Some("Consider using a different name to avoid confusion.".into()),
                     }
                 }
 

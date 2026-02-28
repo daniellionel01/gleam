@@ -5,13 +5,12 @@ use crate::io::files_with_extension;
 use crate::line_numbers::{self, LineNumbers};
 use crate::type_::PRELUDE_MODULE_NAME;
 use crate::{
-    Error, Result, Warning,
     ast::{SrcSpan, TypedModule, UntypedModule},
     build::{
-        Mode, Module, Origin, Outcome, Package, SourceFingerprint, Target,
         elixir_libraries::ElixirLibraries,
         native_file_copier::NativeFileCopier,
         package_loader::{CodegenRequired, PackageLoader, StaleTracker},
+        Mode, Module, Origin, Outcome, Package, SourceFingerprint, Target,
     },
     codegen::{Erlang, ErlangApp, JavaScript, TypeScriptDeclarations},
     config::PackageConfig,
@@ -22,6 +21,7 @@ use crate::{
     paths, type_,
     uid::UniqueIdGenerator,
     warning::{TypeWarningEmitter, WarningEmitter},
+    Error, Result, Warning,
 };
 use askama::Template;
 use ecow::EcoString;
@@ -52,12 +52,6 @@ pub struct PackageCompiler<'a, IO> {
     pub ids: UniqueIdGenerator,
     pub write_metadata: bool,
     pub perform_codegen: bool,
-    /// If set to false the compiler won't load and analyse any of the package's
-    /// modules and always succeed compilation returning no compile modules.
-    ///
-    /// Code generation is still carried out so that a root package will have an
-    /// entry point nonetheless.
-    ///
     pub compile_modules: bool,
     pub write_entrypoint: bool,
     pub copy_native_files: bool,
@@ -66,6 +60,7 @@ pub struct PackageCompiler<'a, IO> {
     pub target_support: TargetSupport,
     pub cached_warnings: CachedWarnings,
     pub check_module_conflicts: CheckModuleConflicts,
+    pub forbid_shadowing: bool,
 }
 
 impl<'a, IO> PackageCompiler<'a, IO>
@@ -101,6 +96,7 @@ where
             target_support: TargetSupport::NotEnforced,
             cached_warnings: CachedWarnings::Ignore,
             check_module_conflicts: CheckModuleConflicts::DoNotCheck,
+            forbid_shadowing: false,
         }
     }
 

@@ -1,12 +1,11 @@
 use crate::{
-    Error, Result, Warning,
     analyse::TargetSupport,
     build::{
-        Mode, Module, Origin, Package, Target,
         package_compiler::{self, PackageCompiler},
         package_loader::StaleTracker,
         project_compiler,
         telemetry::Telemetry,
+        Mode, Module, Origin, Package, Target,
     },
     codegen::{self, ErlangApp},
     config::PackageConfig,
@@ -20,6 +19,7 @@ use crate::{
     uid::UniqueIdGenerator,
     version::COMPILER_VERSION,
     warning::{self, WarningEmitter, WarningEmitterIO},
+    Error, Result, Warning,
 };
 use ecow::EcoString;
 use hexpm::version::Version;
@@ -36,9 +36,9 @@ use std::{
 };
 
 use super::{
-    Codegen, Compile, ErlangAppCodegenConfiguration, Outcome,
     elixir_libraries::ElixirLibraries,
     package_compiler::{CachedWarnings, CheckModuleConflicts, Compiled},
+    Codegen, Compile, ErlangAppCodegenConfiguration, Outcome,
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -64,6 +64,7 @@ pub struct Options {
     pub warnings_as_errors: bool,
     pub root_target_support: TargetSupport,
     pub no_print_progress: bool,
+    pub forbid_shadowing: bool,
 }
 
 #[derive(Debug)]
@@ -611,14 +612,12 @@ where
         };
         if is_root {
             compiler.cached_warnings = CachedWarnings::Use;
-            // We only check for conflicting Gleam files if this is the root
-            // package, since Hex packages are bundled with the Gleam source files
-            // and compiled Erlang files next to each other.
             compiler.check_module_conflicts = CheckModuleConflicts::Check;
         } else {
             compiler.cached_warnings = CachedWarnings::Ignore;
             compiler.check_module_conflicts = CheckModuleConflicts::DoNotCheck;
         };
+        compiler.forbid_shadowing = self.options.forbid_shadowing;
 
         // Compile project to Erlang or JavaScript source code
         compiler.compile(

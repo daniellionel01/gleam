@@ -1,9 +1,9 @@
 use camino::Utf8PathBuf;
 use gleam_core::{
-    Result,
     analyse::TargetSupport,
     build::{Codegen, Compile, Mode, Options, Target},
     paths::ProjectPaths,
+    Result,
 };
 
 static ENTRYPOINT_FILENAME_POWERSHELL: &str = "entrypoint.ps1";
@@ -30,6 +30,7 @@ pub(crate) fn erlang_shipment(paths: &ProjectPaths) -> Result<()> {
     let mode = Mode::Prod;
     let build = paths.build_directory_for_target(mode, target);
     let out = paths.erlang_shipment_directory();
+    let config = crate::config::root_config(paths)?;
 
     crate::fs::mkdir(&out)?;
 
@@ -48,6 +49,7 @@ pub(crate) fn erlang_shipment(paths: &ProjectPaths) -> Result<()> {
             mode,
             target: Some(target),
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         },
         crate::build::download_dependencies(paths, crate::cli::Reporter::new())?,
     )?;
@@ -143,6 +145,7 @@ pub fn typescript_prelude() -> Result<()> {
 }
 
 pub fn package_interface(paths: &ProjectPaths, out: Utf8PathBuf) -> Result<()> {
+    let config = crate::config::root_config(paths)?;
     // Build the project
     let mut built = crate::build::main(
         paths,
@@ -154,6 +157,7 @@ pub fn package_interface(paths: &ProjectPaths, out: Utf8PathBuf) -> Result<()> {
             warnings_as_errors: false,
             root_target_support: TargetSupport::Enforced,
             no_print_progress: false,
+            forbid_shadowing: config.forbid_shadowing,
         },
         crate::build::download_dependencies(paths, crate::cli::Reporter::new())?,
     )?;

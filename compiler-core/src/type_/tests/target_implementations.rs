@@ -27,6 +27,7 @@ pub fn implementations(src: &str) -> Vec<(EcoString, Implementations)> {
         Target::Erlang,
         TargetSupport::NotEnforced,
         None,
+        false,
     )
     .expect("compile src")
     .type_info
@@ -322,6 +323,7 @@ pub fn no_valid_erlang_impl() {
         Target::Erlang,
         TargetSupport::Enforced,
         None,
+        false,
     );
     assert!(out.into_result().is_err());
 }
@@ -349,6 +351,7 @@ pub fn no_valid_javascript_impl() {
         Target::JavaScript,
         TargetSupport::Enforced,
         None,
+        false,
     );
     assert!(out.into_result().is_err());
 }
@@ -376,6 +379,7 @@ pub fn no_valid_erlang_impl() {
         Target::Erlang,
         TargetSupport::Enforced,
         None,
+        false,
     );
     assert!(out.into_result().is_err());
 }
@@ -403,6 +407,7 @@ pub fn no_valid_javascript_impl() {
         Target::JavaScript,
         TargetSupport::Enforced,
         None,
+        false,
     );
     assert!(out.into_result().is_err());
 }
@@ -426,6 +431,7 @@ pub fn no_valid_erlang_impl() {
         Target::Erlang,
         TargetSupport::Enforced,
         None,
+        false,
     );
     assert!(out.into_result().is_err());
 }
@@ -449,6 +455,7 @@ pub fn no_valid_javascript_impl() {
         Target::JavaScript,
         TargetSupport::Enforced,
         None,
+        false,
     );
     assert!(out.into_result().is_err());
 }
