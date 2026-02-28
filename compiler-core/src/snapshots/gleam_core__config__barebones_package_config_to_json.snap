@@ -1,6 +1,6 @@
 ---
 source: compiler-core/src/config.rs
-assertion_line: 1193
+assertion_line: 1203
 expression: output
 snapshot_kind: text
 ---
@@ -48,5 +48,7 @@ version = "1.0.0"
     }
   },
   "target": "erlang",
-  "internal_modules": null
+  "internal_modules": null,
+  "forbid_shadowing": false,
+  "tools": {}
 }

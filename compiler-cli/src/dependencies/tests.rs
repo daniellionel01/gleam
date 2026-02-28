@@ -6,12 +6,12 @@ use hexpm::version::Version;
 use pretty_assertions::assert_eq;
 
 use gleam_core::{
-    Error,
     build::Runtime,
     config::{DenoConfig, DenoFlag, Docs, ErlangConfig, JavaScriptConfig},
     manifest::{Base16Checksum, Manifest, ManifestPackage, ManifestPackageSource},
     paths::ProjectPaths,
     requirement::Requirement,
+    Error,
 };
 
 use crate::dependencies::*;
@@ -1290,6 +1290,8 @@ fn package_config(
         },
         target: Target::Erlang,
         internal_modules: None,
+        forbid_shadowing: false,
+        tools: Default::default(),
     }
 }
 

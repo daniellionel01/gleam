@@ -1,6 +1,6 @@
 ---
 source: compiler-core/src/config.rs
-assertion_line: 1177
+assertion_line: 1187
 expression: output
 snapshot_kind: text
 ---
@@ -122,5 +122,7 @@ allow_read = ["./database.sqlite"]
   "target": "erlang",
   "internal_modules": [
     "my_app/internal"
-  ]
+  ],
+  "forbid_shadowing": false,
+  "tools": {}
 }
