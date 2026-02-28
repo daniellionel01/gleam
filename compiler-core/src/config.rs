@@ -1,7 +1,7 @@
 mod stale_package_remover;
 use crate::error::{FileIoAction, FileKind};
-use crate::io::ordered_map;
 use crate::io::FileSystemReader;
+use crate::io::ordered_map;
 use crate::manifest::Manifest;
 use crate::requirement::Requirement;
 use crate::version::COMPILER_VERSION;
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{self};
 use std::marker::PhantomData;
+use toml::Table;
 
 #[cfg(test)]
 use crate::manifest::ManifestPackage;
@@ -999,7 +1000,7 @@ pub struct Link {
 // Note we don't use http-serde since we also want to validate the scheme and host is set.
 mod uri_serde {
     use http::uri::InvalidUri;
-    use serde::{de::Error as _, Deserialize, Deserializer};
+    use serde::{Deserialize, Deserializer, de::Error as _};
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<http::Uri, D::Error>
     where
@@ -1050,7 +1051,7 @@ mod uri_serde {
 // This prefixes https as a default in the event no scheme was provided
 mod uri_serde_default_https {
     use http::uri::InvalidUri;
-    use serde::{de::Error as _, Deserialize, Deserializer};
+    use serde::{Deserialize, Deserializer, de::Error as _};
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<http::Uri, D::Error>
     where
