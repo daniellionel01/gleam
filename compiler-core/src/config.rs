@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{self};
 use std::marker::PhantomData;
-use toml::Table;
 
 #[cfg(test)]
 use crate::manifest::ManifestPackage;
@@ -145,7 +144,6 @@ impl GleamVersion {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct PackageConfig {
     #[serde(deserialize_with = "package_name::deserialize")]
     pub name: EcoString,
@@ -718,7 +716,6 @@ impl Default for PackageConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Default, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct ErlangConfig {
     /// An module that can be set in the `.app` file as the entrypoint for a stateful application
     /// that defines a singleton supervision tree.
@@ -735,7 +732,6 @@ pub struct ErlangConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Default, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct JavaScriptConfig {
     #[serde(default)]
     pub typescript_declarations: bool,
@@ -815,7 +811,6 @@ where
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Default, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct DenoConfig {
     #[serde(default, deserialize_with = "bool_or_seq_string_to_deno_flag")]
     pub allow_env: DenoFlag,
@@ -846,7 +841,7 @@ pub struct DenoConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
-#[serde(tag = "type", deny_unknown_fields)]
+#[serde(tag = "type")]
 pub enum Repository {
     #[serde(rename = "github")]
     GitHub {
@@ -982,14 +977,12 @@ impl Repository {
 }
 
 #[derive(Deserialize, Serialize, Default, Debug, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct Docs {
     #[serde(default)]
     pub pages: Vec<DocsPage>,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct DocsPage {
     pub title: String,
     pub path: String,
@@ -997,7 +990,6 @@ pub struct DocsPage {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct Link {
     pub title: String,
     #[serde(with = "uri_serde")]
@@ -1186,9 +1178,6 @@ allow_ffi = true
 allow_env = ["DATABASE_URL"]
 allow_net = ["example.com:443"]
 allow_read = ["./database.sqlite"]
-
-[tools.my-tool]
-enable = true
 "#;
 
     let config = toml::from_str::<PackageConfig>(input).unwrap();
@@ -1232,21 +1221,4 @@ wibble = ">= 1.0.0 and < 2.0.0"
 "#;
     let canonical = deserialise_config("gleam.toml", toml.into()).expect("valid config");
     assert_eq!(canonical, hyphen_alternative)
-}
-
-#[test]
-fn unknown_field_root() {
-    let input = r#"
-name = "wibble"
-version = "1.0.0"
-
-unknown = true
-"#;
-
-    insta::assert_snapshot!(
-        insta::internals::AutoName,
-        toml::from_str::<PackageConfig>(input)
-            .unwrap_err()
-            .to_string(),
-    )
 }

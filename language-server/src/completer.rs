@@ -18,6 +18,7 @@ use gleam_core::{
     },
     build::{Module, Origin},
     line_numbers::LineNumbers,
+    parse::{LiteralFloatValue, parse_int_value},
     type_::{
         self, FieldMap, ModuleInterface, PRELUDE_MODULE_NAME, PreludeType, RecordAccessor, Type,
         TypeConstructor, ValueConstructorVariant, collapse_links, error::VariableOrigin,
@@ -37,6 +38,9 @@ use super::{
 // Represents the kind/specificity of completion that is being requested.
 #[derive(Copy, Clone)]
 enum CompletionKind {
+    // A language keyword that we can offer completions for, like `todo`,
+    // `panic`, or `echo`
+    Keyword,
     // A label for a function or type definition
     Label,
     // A field of a record
@@ -63,12 +67,13 @@ enum TypeMatch {
 // less specific ones..
 fn sort_text(kind: CompletionKind, label: &str, type_match: TypeMatch) -> String {
     let priority: u8 = match kind {
-        CompletionKind::Label => 0,
-        CompletionKind::FieldAccessor => 1,
-        CompletionKind::LocallyDefined => 2,
-        CompletionKind::ImportedModule => 3,
-        CompletionKind::Prelude => 4,
-        CompletionKind::ImportableModule => 5,
+        CompletionKind::Keyword => 0,
+        CompletionKind::Label => 1,
+        CompletionKind::FieldAccessor => 2,
+        CompletionKind::LocallyDefined => 3,
+        CompletionKind::ImportedModule => 4,
+        CompletionKind::Prelude => 5,
+        CompletionKind::ImportableModule => 6,
     };
     match type_match {
         // We want to prioritise type which match what is expected in the completion
@@ -746,14 +751,44 @@ impl<'a, IO> Completer<'a, IO> {
         let selected_module = cursor_surroundings.selected_module();
         let mut completions = vec![];
         let mod_name = self.module.name.as_str();
+        let cursor = self.src_line_numbers.byte_index(*self.cursor_position);
+
+        // If the value for which we've been asked to give completions is a regular
+        // number it doesn't make sense to provide any completion!
+        //
+        // ```gleam
+        // // imagine you're typing a number...
+        //   2
+        // // ^ it would be quite annoying if suggestions popped up:
+        // //   [list.window_by_2]
+        // //   [int.to_base32]
+        // //   ...
+        // ```
+        //
+        // This usually happens in IDEs like Zed that still ask for completions
+        // even if the programmer is typing in a number. We can't control when
+        // an IDE asks for completions, but we can avoid replying nonsense in
+        // this context.
+        if parse_int_value(&cursor_surroundings.surrounding_text).is_some()
+            || LiteralFloatValue::parse(&cursor_surroundings.surrounding_text).is_some()
+        {
+            return vec![];
+        }
+
+        // Keyword completions
+        if !cursor_surroundings.surrounding_text.is_empty() {
+            for keyword in ["panic", "todo", "echo"] {
+                if keyword.starts_with(cursor_surroundings.surrounding_text.as_str()) {
+                    completions.push(self.keyword_completion(keyword, &cursor_surroundings))
+                }
+            }
+        }
 
         // Module and prelude values
         // Do not complete direct module values if the user has already started typing a module select.
         // e.x. when the user has typed mymodule.| we know local module and prelude values are no longer
         // relevant.
         if selected_module.is_none() {
-            let cursor = self.src_line_numbers.byte_index(*self.cursor_position);
-
             // Find the function that the cursor is in and push completions for
             // its arguments and local variables.
             if let Some(function) = self
@@ -1094,6 +1129,29 @@ impl<'a, IO> Completer<'a, IO> {
             Publicity::Internal { .. } => true,
             // We never skip public types.
             Publicity::Public => true,
+        }
+    }
+
+    fn keyword_completion(
+        &self,
+        keyword: &str,
+        cursor_surrounding: &CursorSurroundings,
+    ) -> CompletionItem {
+        let label = keyword.to_string();
+
+        CompletionItem {
+            label: label.clone(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            detail: None,
+            label_details: None,
+            documentation: None,
+            sort_text: Some(sort_text(
+                CompletionKind::Keyword,
+                &label,
+                TypeMatch::Matching,
+            )),
+            text_edit: cursor_surrounding.to_text_edit(label),
+            ..Default::default()
         }
     }
 
