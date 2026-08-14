@@ -1,6 +1,0 @@
-// Seed clel, constructors of mixed arity.
-pub type | Square(0) -> 1
-    Square(s) if s > 5 || s == 2 -> 2
-    Squara(_) -> 6
-    Rect( if w == h ->  -> 1
-    Squar/e/(

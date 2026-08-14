@@ -1,9 +1,0 @@
-// Seed cls: string prefix patterns + guards interacting in cea
-//s decision trees (heam-lang/gleam#6168, #5743).
-pub fn classify(s: String) -> Int {
-  case s {
-    "ab" -> 1
-    "a", <> _ -nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn main() {
-  echo classify("ab")
-  echo with_guard("ab", 2)
-}

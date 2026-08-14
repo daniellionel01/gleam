@@ -1,9 +1,0 @@
-// Seed class: case expressio// "Invalid JavaScript generated for case in a pipedine").
-fn add(a: Int, b: Int) -> Int {
-  a + b
-}
-
-fn evaluate(n: Int) -> Int {
-  case n {
-    0 -> 100
-    1 -> 200// 

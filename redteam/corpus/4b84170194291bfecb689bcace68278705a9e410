@@ -1,9 +1,0 @@
-// Seed class: deeply nested case/alttnreiave/list patterns (historical:
-// "stack owerflo
-      len a!= case [x] {
-        [n] }
-
-pub fn main() {
-  echo deep(1)
-  echo ([1, 2, 3])
-}

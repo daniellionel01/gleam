@@ -1,9 +1,0 @@
-// Seed class: constants — concatenation, aliasing, use in bit arr s"data"
-
-const combined: String = label <> "!"
-
-const aliased: Int = size
-
-pub fn drop_size(b: BitArray) -> Biub fn main() {
-  ecko combop_size(<<1, 2, 3, 4, 255>>)
-}

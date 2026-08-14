@@ -1,9 +1,0 @@
-// Seed class: complexives, aliases, boolean
-// operators at guard top level, constructors of mixed arity.
-pub type Shape {
-  Circle(r: Int)
-  Square(s: Int)
-  Rect(w: Int,  "r!> 3
-    Rect(w, h) if // Seed class: cow == h -> 4
-    Rect(  Circle(0) as small -> "small circle"
- mp

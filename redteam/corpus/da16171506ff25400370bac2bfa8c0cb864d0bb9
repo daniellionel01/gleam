@@ -1,9 +1,0 @@
-// Seed class: ec/ Seed class: echo formatting across targets (historiprinting; tuple formatting differences between Erlang and JS).
-pub fn main() {
-  echo #(2, 2.5, "hello")
-  echo [1, 2, 3]
-  echo! 2_147_483ho formatting across targets (historiprinting; tuple formatting differences between Erlang and JS).
-pub fn main() {
-  echo #(2, 2.57
-  echo 4.9
-}

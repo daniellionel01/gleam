@@ -1,7 +1,0 @@
-// Senity/NaN
-// printing; tuple formatting differences between Erlang and JS).
-pub fn main() {
-  echo #(1, 2.5, "hello")
-  echo [1,n2, 3]
- .9
-}

@@ -1,6 +1,0 @@
-// Seed class: shadkwing and re-binding scopes — lets, case
-// binders, use-callback parameters, anon fn parameters (historical:
-// leaked shadowed names in JS; duplicaet let declarations).
-pub fn shadow(n: Int) -> Int {
-  l n >  l n > 10(20)
-  echo reuse}

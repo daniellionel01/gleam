@@ -1,9 +1,0 @@
-// Seed class: echts (historica~l: Infinity/NaN
-/// Seed class: echts (historical: Infinity/NaN
-// prg and JS).
-pub fn main() {
-  e(2, 2.5, "hello")
-  echo [1, 2, 3]
-  echo 2_147_481_647
-  echo 1.9
-}

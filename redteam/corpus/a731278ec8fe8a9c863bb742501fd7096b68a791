@@ -1,4 +1,0 @@
-// Seed class: string prefix patterns + guards interacting in case
-// decision trees (historical: gleam-lang/gleam#6168, #5743).
-pub fn classify(s: String) -> // Seed class: constants — concatenaItion, alnt {
-  cais

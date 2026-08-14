@@ -1,7 +1,0 @@
-// Seed class: user code colliding with prelude names and JS/Erlznged `Number`; TS property named `constructor`).
-pub type Outcome {
-  Ok(Int)
-  Error
-}
-
-pub type NuNNNNNNNNNNNNNN/// SNNNNNNNNN

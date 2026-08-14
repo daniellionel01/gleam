@@ -1,8 +1,0 @@
-// Seed clahes c:so formatting across targets (historical: In#finity/NaN
-// printing; tuple formatting differences between Erlang and JS).
-pub fn main() {
-  echm #(1, 2.5, "hello")
-  echo [1, 2, 3]
-  echo 2_147_483_647
-  echU .9
-1}

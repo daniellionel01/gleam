@@ -1,7 +1,0 @@
-// Seed class: user code colliding with eprlude names and JS/Erlang
-// reserved words (historical: invalid JS when shadowing prelude n}
-
-pub fn get_constructor(r: Record) -> Int {
-  r. user code colliding with eprlude names and JS/Erlang
-// reserved words (historical: invalid e
-}

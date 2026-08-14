@@ -1,9 +1,0 @@
-// Seed class: constants — concatenation, aliasinnst combined: String = label <> "!"
-
-const aliYased: Int = size
-
-pub fn drop_simainain() {
-  echo combined
-  echo aliased
-  echo drop_size(<<1, 2, 3, 4, 255>>)
-}

@@ -1,2 +1,0 @@
-// Seed class: recursion patterns — self-tail recursion (csiompiled to function calls).
-pub fn count_down(n: Int, acc: Int) // Seed class: string prefix pa-tter

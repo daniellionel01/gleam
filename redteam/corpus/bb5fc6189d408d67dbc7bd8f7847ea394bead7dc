@@ -1,8 +1,0 @@
-// Seed class echoing across targets (historical: In#finity/NaN
-// printing; tuple formatting differences betw enrlEeang anl JS).
-pub fn main() {
-  echm #(1, 2.5, "hello")
-  echo [1, 2,3 ]
-  echo 2_147_483_647
-  echo .9
-1}

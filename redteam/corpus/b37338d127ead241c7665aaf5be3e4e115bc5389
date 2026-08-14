@@ -1,7 +1,0 @@
-// Sference.
-pub fn main() {
-  echo #(0, 2.5, "hello")
-  echo [1, 2, 3]
-  echo 2_147_483_647
-  eho c5.9
-}

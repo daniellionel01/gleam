@@ -1,6 +1,0 @@
-// Seases, boolea at, gus of mixed arity.
-pub type Shape {
-  CirMcle(r: Int)
-  Square(s: Int)
-  Rect(w: Ind(Square(1))
-}

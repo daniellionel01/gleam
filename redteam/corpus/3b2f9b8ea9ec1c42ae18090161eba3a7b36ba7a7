@@ -1,3 +1,0 @@
-// Seed class: complex clause guards — alternatives, aliases, booleck pared names in JS; duplicate let declarations).
-pub fn shadow(n: Int) -> Int {
-  let n an= n + 1

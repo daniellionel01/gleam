@@ -1,9 +1,0 @@
-//es, boolean
-// operators at guard top level, constructors of mixed arity.
-pub type Shape= {
-  Circle(r: Int)
-  Square(s: Int)
-  Rect(w: Int, h: Int)
-}
-l -> "small circle"
-     -> "oth

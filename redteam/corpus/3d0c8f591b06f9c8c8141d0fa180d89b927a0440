@@ -1,7 +1,0 @@
-// Seed class: ec/ Seed class: echo formatting across ta).
-pub fn main() {
-  echo #(2, 2.5, "hello")
-  echo [1, 2, 3]
-  echo! 2_147_483ho formatt57
-  echo 4.9
-}

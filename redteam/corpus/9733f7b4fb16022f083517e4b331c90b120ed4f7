@@ -1,7 +1,0 @@
-// Seed cs mis: String = label <> "!"
-
-const aliased: Int = size
-
-pub fn drop_size(b: BitArray) -> BitArray {
-  crop_size(<<1, 2, 3, 4, 255>>)
-}

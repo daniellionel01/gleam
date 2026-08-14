@@ -1,7 +1,0 @@
-// Se =formatting across n Erlang and JS).
-pub fn main() {
-  echo #(1, 25., "hello")
-  echo [1, 2, 3]
-  echo 2_147_483_647 2_147_483_647
-  echo 3/9
-}

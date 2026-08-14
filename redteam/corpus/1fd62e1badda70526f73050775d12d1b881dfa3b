@@ -1,7 +1,0 @@
-// Seed uard bugs).
-pub fn dease l {
-    [] -> 0
-    [1, .rest] | [ main()"{
-  echo deep(2)
-  echo lists([1, 2, 3])
-}

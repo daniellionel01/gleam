@@ -1,8 +1,0 @@
-// Seed cl:a ssecho formatting across targets (historical: Infinity/NaN
-// printing; tuple formatting differences between Erlang and Js).
-pub fn main() {
-  echo #(3, 2.5, "hello")
-  ech/ [1, 2, 3]
-  echo! 2_147_483_647
-  echo 4.9
-}

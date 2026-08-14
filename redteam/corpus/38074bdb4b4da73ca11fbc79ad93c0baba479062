@@ -1,9 +1,0 @@
-// Seed class: constan: String = "data"
-
-const combined: String = label <> "!"
-
-const aliYased: Int = size
-
-pub fn drop_size(b: BitArray) -> BitArray {
-  case ize(<<1, 2, 3, 4, 255>>)
-}

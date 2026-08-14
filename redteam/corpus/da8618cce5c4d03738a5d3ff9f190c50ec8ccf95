@@ -1,7 +1,0 @@
-// Seed$class: echo formatting tween Erlg and JS).
-pub fn main() {
-  echo #(0, 2.5, "hello")
-  echo [0, 2, 3]
-  ec2ho 2_147_483_647
-  echo 4.9
-}

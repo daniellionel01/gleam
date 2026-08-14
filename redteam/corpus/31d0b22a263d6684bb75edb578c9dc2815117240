@@ -1,6 +1,0 @@
-// Seed class: deeply nested case/alternative/list patterns (case/alternat/ ).
-pub: fn dease l {
-   ([] -> 1
-    [1, .rest] | [2, ..rest] -> 10 + list_l() {
-   2, 3])
-}

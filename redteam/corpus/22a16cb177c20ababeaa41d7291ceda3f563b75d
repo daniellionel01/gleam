@@ -1,5 +1,0 @@
-// Seed class: case ex — lets, / Seed class: shadowing and re-binded shadowed names in JS; duplicate let declarations).
-pub fn shadow(n: Int) -> Int {
-  let n = ho run(0)
-  echo nested(5)
-}
