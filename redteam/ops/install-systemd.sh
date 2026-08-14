@@ -65,4 +65,12 @@ EOF
 systemctl daemon-reload
 systemctl enable --now redteam-fuzz.service
 systemctl enable --now redteam-sync.timer
+
+# Allow the sync job (running as the redteam user) to restart exactly the
+# fuzz service after updates — nothing else.
+cat > /etc/sudoers.d/redteam-fuzz-restart <<EOF
+$U ALL=(root) NOPASSWD: /usr/bin/systemctl restart redteam-fuzz.service
+EOF
+chmod 440 /etc/sudoers.d/redteam-fuzz-restart
+
 echo "systemd units installed: redteam-fuzz.service, redteam-sync.timer"

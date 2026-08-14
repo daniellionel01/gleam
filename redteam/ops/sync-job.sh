@@ -27,6 +27,10 @@ if ! cargo +nightly fuzz build; then
   exit 1
 fi
 
+echo "[sync] refreshing seed corpus"
+mkdir -p fuzz/corpus/compile_all_targets
+cp redteam/corpus/*.gleam fuzz/corpus/compile_all_targets/
+
 echo "[sync] minimizing corpora"
 cargo +nightly fuzz cmin parse_only || true
 cargo +nightly fuzz cmin compile_all_targets || true
@@ -46,3 +50,8 @@ if [ "${CORPUS_GIT_SYNC:-0}" = "1" ]; then
 fi
 
 echo "[sync] done"
+
+# Script/harness changes only take effect in the fuzz loop after a restart.
+# The sudoers rule installed by install-systemd.sh permits exactly this.
+sudo -n systemctl restart redteam-fuzz.service 2>/dev/null \
+  || echo "[sync] could not restart redteam-fuzz (needs root or the sudoers rule)"

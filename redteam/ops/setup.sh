@@ -82,6 +82,7 @@ fi
 
 echo "==> [7/7] fuzz target build + systemd units"
 sudo -u "$REDTEAM_USER" bash -c '. "$HOME/.cargo/env" && cd "$HOME/gleam" && cargo +nightly fuzz build'
+sudo -u "$REDTEAM_USER" bash -c 'cd "$HOME/gleam" && mkdir -p fuzz/corpus/compile_all_targets && cp redteam/corpus/*.gleam fuzz/corpus/compile_all_targets/'
 REDTEAM_USER="$REDTEAM_USER" HOME_DIR="$HOME_DIR" \
   "$HOME_DIR/gleam/redteam/ops/install-systemd.sh"
 

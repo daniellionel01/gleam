@@ -33,8 +33,13 @@ Overrides: `REDTEAM_USER`, `REPO_URL`, `BRANCH` env vars.
 
 | Unit | What it does |
 |---|---|
-| `redteam-fuzz.service` | Infinite sprint loop (`fuzz-loop.sh`): 15 min `parse_only`, 60 min `compile_all_targets` (seeded from `redteam/corpus/`), artifact collection after each sprint. `Restart=always`, `Nice=10`, OOM-sacrificable. |
-| `redteam-sync.timer` | Daily 04:00 (`sync-job.sh`): reset checkout to latest `origin/red-team`, rebuild fuzz targets, minimize the on-box corpus. |
+| `redteam-fuzz.service` | Infinite sprint loop (`fuzz-loop.sh`): 15 min `parse_only`, 60 min `compile_all_targets`, artifact collection after each sprint. `Restart=always`, `Nice=10`, OOM-sacrificable. |
+| `redteam-sync.timer` | Daily 04:00 (`sync-job.sh`): reset checkout to latest `origin/red-team`, rebuild fuzz targets, refresh seeds into the fuzz corpus, minimize the on-box corpus, restart the fuzz service. |
+
+Corpus layout: the curated seeds in `redteam/corpus/` are **copied** into
+`fuzz/corpus/compile_all_targets/` by setup and each daily sync; libFuzzer
+grows that default corpus dir (its first corpus dir is the writable one),
+so the curated seeds in git are never polluted by generated inputs.
 
 Sprint lengths: `SHORT_SPRINT` / `LONG_SPRINT` env vars in the unit.
 

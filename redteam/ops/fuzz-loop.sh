@@ -27,7 +27,11 @@ while true; do
   redteam/ops/process-artifacts.sh parse_only || true
 
   echo "[fuzz-loop] $(date -u +%FT%TZ) compile_all_targets sprint (${LONG}s)"
-  cargo +nightly fuzz run compile_all_targets redteam/corpus -- \
+  # NB: no explicit corpus dir — libFuzzer grows the FIRST corpus dir it is
+  # given, and we want that to be the default fuzz/corpus/<target> dir, not
+  # the curated seeds. Seeds are copied into the default dir by setup.sh and
+  # sync-job.sh instead.
+  cargo +nightly fuzz run compile_all_targets -- \
     -max_total_time="$LONG" -timeout=25 || true
   redteam/ops/process-artifacts.sh compile_all_targets || true
 done
