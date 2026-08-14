@@ -68,8 +68,13 @@ redteam/
 ├── corpus/                         Seeds covering every historical bug class.
 │                                     Replay: cargo test -p gleam-core redteam
 │                                     Rule: everything here must be panic-free.
-│                                     (Convention when needed: corpus/known-failures/
-│                                      for minimized repros of OPEN bugs.)
+│                                     Subdir corpus/known-failures/ holds
+│                                     minimized repros of OPEN bugs; the
+│                                     replay is non-recursive and skips it.
+│                                     Single-file replay:
+│                                       REDTEAM_REPLAY=abs/path cargo test \
+│                                         -p gleam-core redteam::tests::replay_file_from_env \
+│                                         -- --ignored --nocapture
 ├── bin/diff-run.sh                 Differential runner: one module with
 │                                     `pub fn main`, compiled+run on Erlang and
 │                                     Node.js, outputs diffed.

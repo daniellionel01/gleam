@@ -59,3 +59,28 @@
   against the issue tracker. Dedup before reporting is mandatory.
 - `candidate-new-bug` entries are **not** investigations yet — the P1 phase
   harvest will isolate them with the reducer pipeline.
+
+## 2026-08-14 — F-5 — FIRST VPS HARVEST: parser panic on `|>` in constants
+
+- **Found by**: `compile_all_targets` (and independently `parse_only`) on the
+  VPS, ~2 CPU-hours in. Artifacts `d7da2e80…`, `09f2e4f9…`, `2bd1bab2…`.
+- **Minimal repro** (one line, panics the whole compiler):
+  ```gleam
+  const b = 1 |> 2
+  ```
+- **Root cause**: `parse.rs:5220` — `constant_binop_reduction` calls
+  `token_to_binop(&operator_token).expect(...)`. The constant-expression
+  parser hands the pipe token to the reduction as if it were a binop;
+  `token_to_binop` doesn't cover it. Unreachable-by-assumption, reachable
+  from source. Same shape as historical "X made it to code generation"
+  panics, but this one is in the *parser*: no valid-program input needed.
+- **Tracker check** (2026-08-14): no issue matches "converted to binop".
+- **Classification**: `candidate-new-bug`, crash class (#3). Severity
+  moderate: any `|>` inside a `const` aborts compilation with a panic
+  instead of an error message.
+- **Regression fixture**: `corpus/known-failures/parser_pipe_in_const.gleam`
+  (excluded from the panic-free corpus replay by directory convention).
+- **Status**: CONFIRMED NEW. Awaiting decision on upstream report; fix is a
+  one-line `expect` → graceful error, plus a parse-precedence audit for
+  other non-binop tokens reaching the same reduction (e.g. check `&&`/`||`
+  in consts and guard-only operators).

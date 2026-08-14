@@ -251,6 +251,21 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// Manually replay a single input (e.g. a fuzz artifact) against the
+    /// full pipeline. Not part of the suite:
+    ///   REDTEAM_REPLAY=path/to/input cargo test -p gleam-core redteam -- --ignored --nocapture
+    #[test]
+    #[ignore = "manual replay helper, driven by REDTEAM_REPLAY"]
+    fn replay_file_from_env() {
+        let path = std::env::var("REDTEAM_REPLAY").expect("set REDTEAM_REPLAY to a file path");
+        let data = std::fs::read(&path).expect("read replay file");
+        println!("--- input:\n{}", String::from_utf8_lossy(&data));
+        match probe_guarded(&data) {
+            Ok(outcome) => println!("--- outcome: {outcome}"),
+            Err(panic) => panic!("--- compiler PANICKED: {panic}"),
+        }
+    }
+
     /// Every file in `redteam/corpus/` is pushed through the full pipeline.
     /// Parse errors and analysis rejections are fine. A panic is a bug and
     /// fails the build of `gleam-core` itself.
