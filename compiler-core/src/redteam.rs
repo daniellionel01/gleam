@@ -27,7 +27,7 @@ use crate::{
     build::{Origin, Outcome, Target, package_compiler::StdlibPackage},
     codegen::TypeScriptDeclarations,
     config::PackageConfig,
-    erlang, inline, javascript, parse,
+    erlang, javascript, parse,
     type_::{self, prelude::PRELUDE_MODULE_NAME},
     uid::UniqueIdGenerator,
     warning::{TypeWarningEmitter, WarningEmitter},
@@ -255,10 +255,13 @@ fn analyse(src: &str, target: Target) -> Option<(TypedModule, LineNumbers)> {
         // Only fully successful analysis is allowed to reach code generation,
         // mirroring the real build pipeline: `PartialFailure` carries analysis
         // errors, and codegen on such a module is unreachable in practice.
-        Outcome::Ok(typed) => {
-            let typed = inline::module(typed, &modules);
-            Some((typed, LineNumbers::new(src)))
-        }
+        //
+        // PIPELINE FIDELITY: the real build pipeline performs NO inlining
+        // (disabled upstream, see gleam-lang/gleam#5010), so the probe must
+        // not inline either. An earlier version of this module inlined and
+        // produced false findings (F-6, F-10 in redteam/findings.md) that
+        // never reproduce on the real compiler.
+        Outcome::Ok(typed) => Some((typed, LineNumbers::new(src))),
         Outcome::PartialFailure(..) | Outcome::TotalFailure(_) => None,
     }
 }

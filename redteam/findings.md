@@ -8,8 +8,19 @@
 > Append-only journal of what the tooling surfaces. Each entry: seed/input,
 > classification, and follow-up status. Classifications:
 > `known-open-bug`, `candidate-new-bug` (needs isolation + confirmation),
+> `confirmed-new-bug` (verified against the REAL build pipeline),
+> `probe-artifact` (reproduces only in our harness, not the real pipeline),
 > `documented-divergence` (added to the divergence spec, not a bug),
 > `runner-noise` (tooling artifact, fixed in tooling).
+
+> **⚠ Pipeline-fidelity incident (2026-08-14)**: an early version of the
+> probe ran the *disabled* inliner before codegen, producing findings F-6
+> and F-10 that never reproduce on the real compiler (a user check on
+> gleam 1.18.1 caught it). The probe now mirrors the real pipeline exactly
+> (no inlining; see gleam-lang/gleam#5010). **Rule: every crash finding
+> must be verified against the real `gleam` CLI before being called
+> `confirmed-new-bug`.** All known-failures fixtures were re-verified
+> against the real CLI on 2026-08-14; statuses below reflect that.
 
 ## 2026-08-14 — P0 tooling validation run (11 corpus seeds, diff-run)
 
@@ -68,15 +79,17 @@
   ```
 - **Trigger**: the string sibling of F-7 — a GUARDED alternative
   string-prefix clause following another alternative string clause.
-- **Family summary (updated)**: F-6/F-10 are the anonymous-function branch
-  (param scope registration lost on multi-use / shadowing); F-7/F-8/F-9/
-  F-11 are the decision-tree branch (alternative patterns after earlier
-  clauses lose guard/body variable registrations; list AND string
-  subjects). All share `erlang.rs:512` `local_var_name`. gleam-smith
-  suppressions now: no anon-fn application (F-10), no alternatives on list
-  subjects (F-7..F-9), no guards on alternative clauses (F-7/F-11), no
-  aliases on alternative clauses (F-8).
-- **Status**: CONFIRMED NEW.
+- **Family summary (updated)**: F-7/F-8/F-9/F-11 are the REAL bug class —
+  alternative patterns after earlier clauses lose guard/body variable
+  registrations in the Erlang decision-tree compiler (verified on the real
+  pipeline; list AND string subjects). F-6/F-10 looked like an
+  anonymous-function branch of the same crash but turned out to be
+  inliner-only (`probe-artifact`). gleam-smith suppressions now: no
+  alternatives on list subjects (F-7..F-9), no guards on alternative
+  clauses (F-7/F-11), no aliases on alternative clauses (F-8).
+- **Status**: `confirmed-new-bug` — VERIFIED against the real CLI
+  (2026-08-14): `gleam build --target erlang` aborts with
+  `error: Fatal compiler bug! … variable not in scope`.
 
 ## 2026-08-14 — F-10 — Erlang codegen panic: anon fn param used twice (the headline repro)
 
@@ -94,8 +107,14 @@
   second. JavaScript codegen is unaffected.
 - **Severity**: HIGH for the family — this is ordinary-looking user code,
   not an adversarial shape. Any Gleam user can hit it on the Erlang target.
-- **Status**: CONFIRMED NEW. gleam-smith suppression: immediately-applied
-  anonymous functions disabled until fixed (see `ANON_APPLY_ENABLED`).
+- **Severity note**: the "ordinary user code" framing was WRONG — see the
+  reclassification below.
+- **Status**: `probe-artifact` (reclassified 2026-08-14). Verified against
+  the real CLI: `gleam run --target erlang` compiles and prints 20 (gleam
+  1.18.1 AND repo HEAD). The crash requires the disabled inliner
+  (gleam-lang/gleam#5010) in the pipeline, which the real compiler never
+  runs. Latent inliner bug, not a user-facing bug today. gleam-smith
+  anon-fn generation re-enabled accordingly.
 
 ## 2026-08-14 — F-9 — Erlang codegen panic: alternatives after cons pattern (purest form)
 
@@ -119,7 +138,10 @@
   alternative list patterns following other list clauses lose variable
   registrations in the Erlang decision-tree compiler. Suppression in
   gleam-smith: no alternatives on list subjects at all until fixed.
-- **Status**: CONFIRMED NEW.
+- **Status**: `confirmed-new-bug` — VERIFIED against the real CLI
+  (2026-08-14): `gleam build --target erlang` aborts with
+  `error: Fatal compiler bug! … variable not in scope`. gleam-smith
+  suppression (no alternatives on list subjects) remains until fixed.
 
 ## 2026-08-14 — F-8 — Erlang codegen panic: alias + alternative overlap
 
@@ -143,8 +165,10 @@
   (`erlang.rs:512`), third distinct trigger — this is a systematic
   scope-registration bug class in Erlang decision-tree compilation, not
   three isolated bugs.
-- **Status**: CONFIRMED NEW. gleam-smith suppression: aliases unwrapped on
-  clauses with alternatives.
+- **Status**: `confirmed-new-bug` — VERIFIED against the real CLI
+  (2026-08-14): `gleam build --target erlang` aborts with
+  `error: Fatal compiler bug! … variable not in scope`. gleam-smith
+  alias-on-alternatives gating remains until fixed.
 
 ## 2026-08-14 — F-7 — Erlang codegen panic: guarded alternative list patterns
 
@@ -175,7 +199,9 @@
 - **Classification**: `candidate-new-bug`, crash class (#3), decision-tree
   compilation (class #1 territory). gleam-smith suppression: no guards on
   alternative list patterns until fixed.
-- **Status**: CONFIRMED NEW.
+- **Status**: `confirmed-new-bug` — VERIFIED against the real CLI
+  (2026-08-14): `gleam build --target erlang` aborts with
+  `error: Fatal compiler bug! … variable not in scope`.
 
 ## 2026-08-14 — F-6 — gleam-smith's first kill: Erlang codegen panic on shadowed anon-fn param
 
@@ -210,10 +236,13 @@
   codegen, hygiene-adjacent (class #2 territory: name/scope tracking).
   This is the exact intersection of classes 2 and 3 the red team program
   predicted would be hottest.
-- **Status**: CONFIRMED NEW. gleam-smith fuzz target `smith_compile` is
-  wired to find siblings of this bug; known-bug registry
-  (`gleam_core::redteam::is_known_compiler_bug`) prevents rediscovery
-  noise.
+- **Status**: `probe-artifact` (reclassified 2026-08-14). The anon-fn
+  inlining pass is DISABLED in the real build pipeline
+  (gleam-lang/gleam#5010); this crash only occurs when the disabled
+  inliner's output is fed to Erlang codegen, which the real compiler never
+  does. Does NOT reproduce on gleam 1.18.1 or repo HEAD via the real CLI.
+  Still a latent bug in the disabled inliner — worth an upstream note if
+  inlining is ever re-enabled, but NOT a user-facing bug today.
 
 ## Standing rules
 

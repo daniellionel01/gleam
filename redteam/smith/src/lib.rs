@@ -180,12 +180,6 @@ const LABEL_POOL: &[&str] = &["value", "inner", "data", "constructor", "field"];
 const STR_POOL: &[&str] = &["", "a", "ab", "abc", "b", "bc", "x", "data", "res", "constructor"];
 const INT_POOL: &[i64] = &[0, 1, 2, 3, 4, 5, 7, 10, 42, 100];
 
-/// F-10 (redteam/findings.md): immediately-applied anonymous functions
-/// crash Erlang codegen when a parameter is referenced more than once.
-/// Set to true once upstream fixes the bug — the shape is excellent
-/// intended coverage.
-const ANON_APPLY_ENABLED: bool = false;
-
 // ---------------------------------------------------------------------------
 // Generation context
 
@@ -202,15 +196,6 @@ struct Ctx {
     types: Vec<CustomType>,
     fns: Vec<FnSig>,
     counter: usize,
-    /// Names that must NOT be shadowed or referenced from case-clause
-    /// bodies in the current generation scope. Used to suppress the F-6
-    /// shapes (see redteam/findings.md): Erlang codegen loses track of
-    /// anonymous function parameters when they are (a) shadowed by `let`
-    /// in one case clause body and used in later clauses, or (b) captured
-    /// by a nested anonymous function. Once the compiler bug is fixed this
-    /// protection can be removed and these shapes become excellent
-    /// intended coverage.
-    protected: Vec<String>,
 }
 
 impl Ctx {
@@ -224,13 +209,9 @@ impl Ctx {
         &self.types[k].name
     }
 
-    /// Choose a name from the env to shadow, excluding protected names.
+    /// Choose a name from the env to shadow.
     fn pick_shadow_name(&self, u: &mut Unstructured<'_>, env: &Env) -> Result<Option<String>> {
-        let candidates: Vec<&String> = env
-            .iter()
-            .map(|(n, _)| n)
-            .filter(|n| !self.protected.contains(*n))
-            .collect();
+        let candidates: Vec<&String> = env.iter().map(|(n, _)| n).collect();
         if candidates.is_empty() {
             return Ok(None);
         }
@@ -278,7 +259,6 @@ impl<'a> Arbitrary<'a> for Module {
             types: Vec::new(),
             fns: Vec::new(),
             counter: 0,
-            protected: Vec::new(),
         };
 
         // -- custom types ---------------------------------------------------
@@ -504,13 +484,6 @@ fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: 
         weights.push((5, 5));
     }
     weights.push((7, 6)); // anon fn application
-    // F-10 suppression: immediately-applied anonymous functions crash
-    // Erlang codegen whenever a parameter is referenced more than once
-    // (`fn(v) { v + v }(10)`). Disabled entirely until fixed; the shape
-    // becomes excellent intended coverage afterwards.
-    if !ANON_APPLY_ENABLED || !ctx.protected.is_empty() {
-        weights.retain(|(_, i)| *i != 6);
-    }
 
     match roll(u, &weights)? {
         0 => {
@@ -587,13 +560,7 @@ fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: 
                 params.push(pname);
                 args.push(gen_base(u, ctx, env, &pty)?);
             }
-            // F-6 suppression: protect anon fn params from shadowing by
-            // `let`s inside the body (see Ctx::protected).
-            let saved_protected = ctx.protected.clone();
-            ctx.protected.extend(params.iter().cloned());
-            let body = gen_expr(u, ctx, &anon_env, ty, depth - 1);
-            ctx.protected = saved_protected;
-            let body = body?;
+            let body = gen_expr(u, ctx, &anon_env, ty, depth - 1)?;
             Ok(Expr::ApplyAnon {
                 params,
                 body: Box::new(body),
@@ -831,9 +798,6 @@ fn gen_case_expr(
         };
 
         let mut body_env = env.clone();
-        // F-6 suppression: anonymous fn params may not be referenced from
-        // case clause bodies.
-        body_env.retain(|(n, _)| !ctx.protected.contains(n));
         for (n, t) in &bound {
             env_push(&mut body_env, n.clone(), t.clone());
         }
@@ -860,7 +824,6 @@ fn gen_case_expr(
             })
             .collect();
         let mut body_env = env.clone();
-        body_env.retain(|(n, _)| !ctx.protected.contains(n));
         for (i, p) in pats.iter().enumerate() {
             if let Pattern::Var(name) = p {
                 env_push(&mut body_env, name.clone(), subj_tys[i].clone());
