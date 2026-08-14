@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Gleam contributors
+#
+# cargo-fuzz crate. Deliberately excluded from the main workspace: fuzz
+# builds need a nightly toolchain and sanitizer instrumentation that the
+# regular build does not want.
+
+[package]
+name = "gleam-redteam-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+gleam-core = { path = "../compiler-core" }
+
+# Prevent the fuzzer from spending cycles on its own instrumentation-heavy
+# deps being optimised; keep the build reproducible across runs.
+[profile.release]
+debug-assertions = true
+overflow-checks = true
+
+[[bin]]
+name = "parse_only"
+path = "fuzz_targets/parse_only.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "compile_all_targets"
+path = "fuzz_targets/compile_all_targets.rs"
+test = false
+doc = false
+
+[workspace]

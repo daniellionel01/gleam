@@ -99,6 +99,7 @@ mod dep_tree;
 pub(crate) mod derivation_tree;
 pub mod exhaustiveness;
 pub(crate) mod inline;
+pub mod redteam;
 pub mod reference;
 
 #[cfg(test)]
