@@ -80,6 +80,14 @@ redteam/
 │                                     Node.js, outputs diffed.
 │                                     `--interesting` = reducer-compatible
 │                                     exit-code mode (0 == divergence found).
+├── bin/smith-campaign.sh           Differential campaign: batch-generate
+│                                     gleam-smith programs, diff-run each.
+├── smith/                          gleam-smith: deterministic type-directed
+│                                     program generator (wasm-smith style).
+│                                     cargo test -p gleam-smith validates
+│                                     300 generated programs against the
+│                                     real compiler.
+├── fuzz-seeds/smith_compile/       Raw entropy seeds for the smith fuzzer.
 ├── ops/                            VPS automation (bare-metal/systemd):
 │                                     setup.sh one-command provisioning,
 │                                     fuzz-loop.service + daily sync timer,
@@ -88,8 +96,13 @@ fuzz/                               cargo-fuzz crate (own workspace, nightly;
 │                                     conventional root location).
 └── fuzz_targets/
     ├── parse_only.rs               L0: raw bytes -> parser. Panic == bug.
-    └── compile_all_targets.rs      L0/L1: bytes -> parse, analyse, codegen
-                                      for JS + TS decls + Erlang. Panic == bug.
+    ├── compile_all_targets.rs      L0/L1: bytes -> parse, analyse, codegen
+    │                                 for JS + TS decls + Erlang. Panic == bug.
+    └── smith_compile.rs            L2: bytes -> gleam-smith well-typed
+                                      module -> full pipeline. Compiler
+                                      panic == compiler bug (unless in the
+                                      known-bug registry); non-compiling
+                                      program == gleam-smith bug.
 ```
 
 ## How to run
@@ -131,7 +144,14 @@ else is a reportable finding. Keep this list explicit and tested.
 - [ ] **P1 — first harvest**: multi-hour `compile_all_targets` campaign, seeded from `corpus/`; triage, minimize (add `treereduce` + an exact interestingness script — `diff-run.sh --interesting` is the scaffold), isolate F-2/F-3 from findings.md, file findings in fork, codify each fix as corpus entry.
 - [x] **P1-ops — continuous running**: `redteam/ops/` — one-command VPS provisioning, systemd fuzz loop + daily sync/rebuild/corpus-maintenance timer, deduped crash-artifact inbox.
 - [ ] **P1.5 — self-consistency gates**: post-codegen `node --check` / `tsc --noEmit` / `erlc` checks on generated artifacts (cheap, kills "invalid code" class).
-- [ ] **P2 — gleam-smith v1**: deterministic type-directed generator (wasm-smith-style, `Arbitrary`), expression/core subset; drive differential runner with generated `main`s.
+- [x] **P2 — gleam-smith v1**: deterministic type-directed generator
+  (wasm-smith-style, `Arbitrary`) — `redteam/smith`. Types: Int, String,
+  Bool, List(Int), 2-tuples, custom enums; case with 1-2 subjects,
+  alternatives, aliases, guards, string prefixes, pipelines, shadowing
+  bias, hostile name pools. 300-seed validation vs real compiler green.
+  **First kill: F-6, a new Erlang codegen panic, on generated program #3.**
+  Fuzz target `smith_compile` wired into the VPS loop; differential driver
+  `bin/smith-campaign.sh`.
 - [ ] **P2.5 — bounded enumeration campaigns**: case-clause matrices; identifier-collision dictionary (prelude names, JS/Erlang keywords, `constructor`, `Number`, …).
 - [ ] **P3 — metamorphic suite**: alpha-renaming + clause reordering + redundant clause injection over corpus and generated programs, diffing both targets.
 - [ ] **P3.5 — typed-AST mutation engine** (L3).

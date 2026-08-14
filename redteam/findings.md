@@ -52,6 +52,169 @@
   rendering-specific behaviour, this is a parity gap worth an issue.
 - **Status**: added to divergence spec draft (echo rendering row).
 
+## 2026-08-14 — F-11 — Erlang codegen panic: guarded alternative string prefixes
+
+- **Found by**: `smith_compile` sprint (artifact `crash-30c0819f…`).
+- **Minimal repro**
+  (`corpus/known-failures/erlang_guarded_alternative_string_prefix.gleam`):
+  ```gleam
+  pub fn main() {
+    echo case "ab" {
+      "bc" <> constructor | "a" <> constructor -> "ab"
+      "ab" <> rest | "" <> rest if rest == "" -> rest
+      _ -> ""
+    }
+  }
+  ```
+- **Trigger**: the string sibling of F-7 — a GUARDED alternative
+  string-prefix clause following another alternative string clause.
+- **Family summary (updated)**: F-6/F-10 are the anonymous-function branch
+  (param scope registration lost on multi-use / shadowing); F-7/F-8/F-9/
+  F-11 are the decision-tree branch (alternative patterns after earlier
+  clauses lose guard/body variable registrations; list AND string
+  subjects). All share `erlang.rs:512` `local_var_name`. gleam-smith
+  suppressions now: no anon-fn application (F-10), no alternatives on list
+  subjects (F-7..F-9), no guards on alternative clauses (F-7/F-11), no
+  aliases on alternative clauses (F-8).
+- **Status**: CONFIRMED NEW.
+
+## 2026-08-14 — F-10 — Erlang codegen panic: anon fn param used twice (the headline repro)
+
+- **Found by**: `smith_compile` sprint (artifact `crash-8c603e38…`).
+- **Minimal repro** (`corpus/known-failures/erlang_anon_param_used_twice.gleam`):
+  ```gleam
+  pub fn main() {
+    echo fn(v) { v + v }(10)
+  }
+  ```
+- **Trigger**: an immediately-applied anonymous function whose parameter is
+  referenced TWICE in its body (`v + v`, `v <= v`, …). Single use is fine.
+  No case, no shadowing, no alternatives. The inliner presumably consumes
+  the param's registration on first substitution and loses it by the
+  second. JavaScript codegen is unaffected.
+- **Severity**: HIGH for the family — this is ordinary-looking user code,
+  not an adversarial shape. Any Gleam user can hit it on the Erlang target.
+- **Status**: CONFIRMED NEW. gleam-smith suppression: immediately-applied
+  anonymous functions disabled until fixed (see `ANON_APPLY_ENABLED`).
+
+## 2026-08-14 — F-9 — Erlang codegen panic: alternatives after cons pattern (purest form)
+
+- **Found by**: `smith_compile` sprint (artifact `crash-a1a29e3f…`).
+- **Minimal repro**
+  (`corpus/known-failures/erlang_alternatives_after_cons_pattern.gleam`):
+  ```gleam
+  pub fn main() {
+    echo case [5, 3] {
+      [_, ..] -> [0]
+      [9, ..rest] | rest -> rest
+      _ -> []
+    }
+  }
+  ```
+- **Trigger**: a list-cons pattern clause, then an ALTERNATIVES clause
+  whose bound variable is used in the body. No guard, no alias, no
+  shadowing required — the purest form of the F-7/F-8 family. Same panic
+  site (`erlang.rs:512`). String-prefix alternatives are NOT affected.
+- **Family summary (F-7/F-8/F-9)**: three minimal repros of one bug class —
+  alternative list patterns following other list clauses lose variable
+  registrations in the Erlang decision-tree compiler. Suppression in
+  gleam-smith: no alternatives on list subjects at all until fixed.
+- **Status**: CONFIRMED NEW.
+
+## 2026-08-14 — F-8 — Erlang codegen panic: alias + alternative overlap
+
+- **Found by**: `smith_compile` sprint (artifact `crash-23b40773…`),
+  hand-minimized through ~8 bisection rounds.
+- **Minimal repro**
+  (`corpus/known-failures/erlang_alias_alternative_overlap.gleam`):
+  ```gleam
+  pub fn main() {
+    echo case [7] {
+      [2] | [] -> [3, 10]
+      [] as whole | whole -> whole
+      _ -> []
+    }
+  }
+  ```
+- **Trigger**: clause 1 has alternatives including `[]`; clause 2 aliases
+  `[]` (`[] as whole`) AND has a var alternative. Changing the alias's
+  inner literal, removing clause 1's `[]` alternative, or removing the
+  alias each avoids the crash. Same panic site as F-6/F-7
+  (`erlang.rs:512`), third distinct trigger — this is a systematic
+  scope-registration bug class in Erlang decision-tree compilation, not
+  three isolated bugs.
+- **Status**: CONFIRMED NEW. gleam-smith suppression: aliases unwrapped on
+  clauses with alternatives.
+
+## 2026-08-14 — F-7 — Erlang codegen panic: guarded alternative list patterns
+
+- **Found by**: `smith_compile` fuzz sprint on gleam-smith-generated
+  programs (artifact `crash-2b8a1feb…`), minutes after F-6 suppression
+  landed. Hand-minimized through ~10 bisection rounds.
+- **Minimal repro**
+  (`corpus/known-failures/erlang_guarded_alternative_list_pattern.gleam`):
+  ```gleam
+  pub fn main() {
+    echo case [10, 3] {
+      [_] -> 1
+      [a] | [a, ..] if a > 0 -> 2
+      _ -> 0
+    }
+  }
+  ```
+- **Trigger**: an exact-length list pattern clause (`[_]`), followed by a
+  GUARDED ALTERNATIVE list pattern (`[a] | [a, ..]`) whose guard
+  references the pattern-bound variable. All three elements required:
+  exact-length clause first, alternative (`|`), guard. Dropping any one
+  avoids the crash.
+- **Root cause (surface)**: same panic site as F-6 (`erlang.rs:512`
+  `local_var_name`) — the Erlang decision-tree compiler loses the guard
+  variable's scope registration for this clause arrangement. Distinct
+  trigger from F-6, likely shared root cause in scope tracking.
+- **Targets**: JavaScript compiles cleanly; only Erlang codegen panics.
+- **Classification**: `candidate-new-bug`, crash class (#3), decision-tree
+  compilation (class #1 territory). gleam-smith suppression: no guards on
+  alternative list patterns until fixed.
+- **Status**: CONFIRMED NEW.
+
+## 2026-08-14 — F-6 — gleam-smith's first kill: Erlang codegen panic on shadowed anon-fn param
+
+- **Found by**: `gleam-smith` seed 2 (the generator's third program ever),
+  during its own validation run. Seeds 16 and 42 hit the same bug.
+- **Minimal repro** (`corpus/known-failures/erlang_shadowed_anon_param.gleam`):
+  ```gleam
+  pub fn main() {
+    echo fn(v) { case 1 {
+        2 -> {
+          let v = 3
+          0
+        }
+        1 -> v
+        _ -> v
+      } }(9)
+  }
+  ```
+- **Trigger**: an immediately-applied anonymous function whose parameter is
+  shadowed by a `let` in one case clause's body, while LATER clauses
+  (a literal clause and the catch-all) reference the parameter. Requires
+  the full 3-clause ensemble — dropping either later clause avoids it.
+- **Root cause (surface)**: `erlang.rs:512` `local_var_name` — the Erlang
+  codegen tracks variables by origin span; the shadowed anon-fn param's
+  registration is lost when compiling the later clauses. Panic message:
+  "variable not in scope", which the code itself documents as "most
+  likely the result of a bug in the compiler".
+- **Targets**: JavaScript + TypeScript compile cleanly (probe order); only
+  Erlang codegen panics.
+- **Tracker check** (2026-08-14): no matching issue.
+- **Classification**: `candidate-new-bug`, crash class (#3), Erlang
+  codegen, hygiene-adjacent (class #2 territory: name/scope tracking).
+  This is the exact intersection of classes 2 and 3 the red team program
+  predicted would be hottest.
+- **Status**: CONFIRMED NEW. gleam-smith fuzz target `smith_compile` is
+  wired to find siblings of this bug; known-bug registry
+  (`gleam_core::redteam::is_known_compiler_bug`) prevents rediscovery
+  noise.
+
 ## Standing rules
 
 - No finding is "closed" here without (a) classification, (b) a minimized
@@ -84,3 +247,4 @@
   one-line `expect` → graceful error, plus a parse-precedence audit for
   other non-binop tokens reaching the same reduction (e.g. check `&&`/`||`
   in consts and guard-only operators).
+- **Follow-up**: added to the known-bug registry so fuzz harnesses skip it.

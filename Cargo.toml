@@ -11,6 +11,7 @@ members = [
   "language-server",
   "test-helpers-rs",
   "test-commands",
+  "redteam/smith",
   "test-output",
   "test-package-compiler",
   "test-project-compiler",

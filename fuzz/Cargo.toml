@@ -18,6 +18,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 gleam-core = { path = "../compiler-core" }
+gleam-smith = { path = "../redteam/smith" }
 
 # Prevent the fuzzer from spending cycles on its own instrumentation-heavy
 # deps being optimised; keep the build reproducible across runs.
@@ -34,6 +35,12 @@ doc = false
 [[bin]]
 name = "compile_all_targets"
 path = "fuzz_targets/compile_all_targets.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "smith_compile"
+path = "fuzz_targets/smith_compile.rs"
 test = false
 doc = false
 

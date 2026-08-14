@@ -9,3 +9,6 @@ erl_crash.dump
 node_modules/
 compiler-cli/build/
 gleam-licences.html
+
+# redteam working artifacts
+redteam/findings/

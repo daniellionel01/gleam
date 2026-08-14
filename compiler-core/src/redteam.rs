@@ -156,6 +156,23 @@ fn panic_payload_to_string(payload: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+/// Panic signatures of CONFIRMED compiler bugs tracked in
+/// `redteam/findings.md`. Fuzz harnesses and generated-program validators
+/// must treat these as expected: skipping them avoids rediscovering known
+/// bugs forever, while any NEW panic signature still gets reported.
+/// Every entry MUST reference a findings.md finding number.
+pub fn is_known_compiler_bug(panic: &str) -> bool {
+    // F-5: parse.rs `constant_binop_reduction` — `|>` (and other non-binop
+    // tokens) inside constant definitions panic the parser.
+    panic.contains("Token could not be converted to binop")
+    // F-6: erlang.rs `local_var_name` — immediately-applied anonymous fn
+    // param shadowed by a `let` in one case clause body, used in later
+    // clauses; also nested anon fns capturing outer anon params.
+    // F-7: erlang.rs `local_var_name` — guarded alternative list pattern
+    // following an exact-length list pattern clause.
+    || panic.contains("variable not in scope")
+}
+
 /// Compile a single-module program to JavaScript.
 ///
 /// Returns `None` if the module is rejected by the analyser. May only panic

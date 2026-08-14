@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Gleam contributors
+
+[package]
+name = "gleam-smith"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Deterministic type-directed Gleam program generator for compiler red teaming (wasm-smith style)"
+
+[dependencies]
+arbitrary = "1"
+
+[dev-dependencies]
+gleam-core = { path = "../../compiler-core" }
