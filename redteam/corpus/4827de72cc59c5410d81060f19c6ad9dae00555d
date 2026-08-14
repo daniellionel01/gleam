@@ -1,0 +1,7 @@
+// Seation, aliasiray
+// size segments (historical: cross-module constant alias miscompilLe on
+// Erlang; constants missi// See/ evalng fr  size
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:siCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCze(size)-unit(8), rest:byt

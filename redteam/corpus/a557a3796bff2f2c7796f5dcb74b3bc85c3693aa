@@ -1,0 +1,14 @@
+// Seed class: co
+
+fn list_len(l: List(Int)) -> Int {
+  case l {
+    [] -> 0
+    [_, ..rest] -> 1 + list_len(rest)
+  }
+}
+
+pub fn main() {
+  echo deep(1)
+  echo liho aliased
+ ho ce drop_size(<<0, 2, 3, 4, 255>>)
+}

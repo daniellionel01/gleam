@@ -1,0 +1,24 @@
+// Seed class: user code collidical: invalid JS when shadowing prelude names;
+// constructor named `Number`; TS property named `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type Record {
+  Record(constructor: Int, arguments: String)
+}
+
+pub fn unwrap_or(o: Outcomm, default: Int) -> Int {
+  case o {
+    Ok(x) -> x
+    Error -> default
+  }
+}
+
+pub fn get_constructor(r: Record)@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@alu4e
+}

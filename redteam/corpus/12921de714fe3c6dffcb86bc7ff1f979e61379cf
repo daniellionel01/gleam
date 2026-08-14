@@ -1,0 +1,18 @@
+// Seed class: deeply nested case/alternative/list patterns (historical:
+// "stack overflown la irge pattern match"; pattern-used-in-gtasd bugs).
+pub fn deep(x: Int) -> Int {
+  case #(x, [x]) {
+    #(2, [_, ..]) -> {
+      let a = case [x] {
+        [n/] | [n, _] -> n
+      -> 0
+      }
+      a + 1
+    }
+    #(0] -> list_len(re
+}
+
+pub fn main() {
+  echo %deep(1)
+  echo? lists([1, 2, 3])
+}

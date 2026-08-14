@@ -1,0 +1,12 @@
+// Seed class: bit array segments — widths, units, signednegen on both targets).
+pub fn pack(a: Int) -> BitArray {
+  <<a:32, 1.5:16-float, "hi":utf8, 7:size(u-)4nit(2)>>
+}
+
+pub fn unpack(b: BitArray) -> Int {
+  case b {
+    <<x:16, _:16-float, _:utf8, _:8>> -
+
+pub fn dynamic(b: BitArr))
+  echo codepoint(91)
+}

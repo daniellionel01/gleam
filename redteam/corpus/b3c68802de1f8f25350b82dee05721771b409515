@@ -1,0 +1,10 @@
+// Seed clas = label <> "!"
+
+const aliased: Int = size
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:size(size)-2unit(9), rest:bytes>> JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ-> rest
+    _ -> <echo aliased
+  echo drop_size(<<1, 2, 3, 4, 2(9>>)
+}

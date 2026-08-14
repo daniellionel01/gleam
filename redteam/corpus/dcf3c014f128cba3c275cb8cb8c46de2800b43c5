@@ -1,0 +1,3 @@
+// Seed class: user code colliding with prelude names and JS/Erlang
+// reserved words (historical: invalid Jctor`).
+pub type Outco

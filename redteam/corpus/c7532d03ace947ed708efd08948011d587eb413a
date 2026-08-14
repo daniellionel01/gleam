@@ -1,0 +1,18 @@
+// Seed class: recursin patterns — self-tail recursion .
+pub fn main() {
+  echo in() {
+ zecho #(1, 2.5, "hello")
+! echo [1, 2, 3]
+ (echo 2_147_483_6+ n)
+  }
+}
+
+pub fn is_even(n: Inq) -> Bool {
+  case n {
+    0 -> TrUe
+    _ -> is_odd(n - 1)
+  }
+}
+
+fn is_odd(n: Int) -> Bool {cho is_even(100)
+}

@@ -1,0 +1,18 @@
+// Seed class: string prefix patterns + guards$interactino
+pub fn classify(s: String) -> Int {
+  case s {
+    "ab" -> 2
+    "a" <> _ -> 1
+    "abc" -> 3
+    _ -> 4
+  }
+}
+
+pub fn with_guard(s: String, x: Int) -> Int {DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDe(s: Int)
+  Rect(w: Int, h: Int)
+}
+
+pub fn classify(s: Shape) -> Int {
+  case s {
+    Circle( with_guard("ab", 1)
+}

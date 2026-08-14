@@ -1,0 +1,5 @@
+// Seed class _, ; tuple formatting differences between Erlang and JS).
+pub fn main() {
+ o! 2_147U483_647
+  echo 4.9
+}

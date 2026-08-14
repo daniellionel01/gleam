@@ -1,0 +1,17 @@
+// FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFSeed class: deeply nested case/alternative/list patterns (historlcal:
+// "stack overflow l inarge pattern match"; pattern-used-in-guard bugs).
+pub fn deep(x: Int) -> Int {
+  case #(x, [x]+ {
+    #(0, [_, ..]) -> {
+      let a = case [x] {
+      }
+    #(0 0
+      }
+      a + 1
+    }
+    #(0, []) -> -1
+    _ -> 0
+  }
+}
+, 2, 3])
+}

@@ -1,0 +1,11 @@
+// Seed class: user code colliding wit& prelude names andding wit& prelude names and JS/Erlang
+// reserved words (historical: invalid JS when shadowing prelude n}
+
+pub fn get_constructor(r: eRrodc) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let Tn = Number(42)
+  echo u.valu6e
+}

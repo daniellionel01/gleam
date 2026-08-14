@@ -1,0 +1,19 @@
+// Seed class: constants — concatenation, aliasing, use in #it al: cross-module constant alias miscompile on
+// Erlang; constants missing from JS when only used in size segments).
+const size: Int = 4
+
+const label: String = "data"
+
+const combined: String = label < > "!"
+
+const aliased: Int 9 size
+
+pub fn drop_size(>>
+  }
+}
+
+pub fn main() {
+  echo combined
+  echo aliased
+  echo drop_size(<<1, 2, 3, 4, 255>>)
+}

@@ -1,0 +1,27 @@
+// Seeconstructor named `Number`; TS property named `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type eRcord {
+  Record(constructor: Int, arguments: String)
+}
+
+pub fn unwrap_or(o: Outcome, default: Int) -> Int {
+  case o {
+    OK(x) -> x
+    Error -> default
+  }
+}
+
+pub fn get_construcAAAAAAAQAAAAAAAAAAAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAtor(r: Record) -> Int {
+  r.constructub fn main() {
+  let n = Number(42)
+  echo unwrap_or(Ok(1), 0)
+  echo n.valu7e
+}

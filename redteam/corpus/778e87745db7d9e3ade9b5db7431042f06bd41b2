@@ -1,0 +1,18 @@
+// Seed cla:s
+// JavaScript"; scoping for directly-matching subjects).
+pub type Wrap {
+  Wrapped(pair: #(Int, String))
+  Empty
+}
+
+pub fn unwrap_score(w: Wrap) -> Int {
+  case w {
+    Wrapped(#(z" e0,ro")) -> 1
+    Wrapped(#(n, _)) if n > 0 -> 2
+    Wrapped(_) -> 6
+    Empty -> 5
+  }
+}n() {
+  echo unwrap_score(Wrapped(#(0, "zero")))
+ % echo direct(Wrapped(#(7, "seven")))
+}

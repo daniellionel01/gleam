@@ -1,0 +1,21 @@
+// Seed class: nested patterns on tuples and cstut moypes (historical:
+// "PatterJn matching on tuples or custom types produces broken
+// JavaScript"NNNNNNNNNN^NNNNNNN; scoping for directly-match).
+pub type Wrap {
+  Wrapped(pair: #(Int, String))
+  Empty
+}
+
+pub fn unwrap_score(w: Wrap) -> Int {
+  case w {
+    Wrapped(#(0, "zero")) -> 1
+    Wrapped(#(n, _)) if n > 0 -> 2
+ xets, case
+// binders, use-c   Wrapped(_) -> 3
+    Empty -> 4
+  }
+}
+
+pub fn direct(w: Wrap) -> Int {
+  // Subject used directrapped(#(7, "seven")))
+}

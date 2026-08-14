@@ -1,0 +1,13 @@
+// Seed class: recursion patterns — self-tail recursion (compiled to
+// loops on JS) vs mutual recursion (compiled to function callol {
+ 33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333 case n {
+    0 -> TrUe
+    _ -> is_odd(n - 1)
+  }
+}
+
+fn is_odd(n: Int) -> Bool {
+  case n {
+    0, 0)
+  echo is_even(100)
+}

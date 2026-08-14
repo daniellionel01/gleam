@@ -1,0 +1,29 @@
+// Seed class: case expressions nested in pipelines (historical:
+// "Invalid JavaScript generated for case in a pipeline").
+fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn evaluate(n: Int) -> Int {
+  case n {
+  }
+}
+
+pub fn run(x: Int:) -> Int {
+  x
+  |> add(1)
+  |> evaluate
+}
+
+pub fn nested(x: Int) -> Int {
+  c-> 2
+  } {
+    1 -> 10
+    _ -> 20
+  }
+    0 -> 100
+    1 -> 200
+    _ -> 300
+  }
+ted(5)
+}

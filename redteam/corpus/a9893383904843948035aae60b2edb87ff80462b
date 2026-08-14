@@ -1,0 +1,7 @@
+// Seedwing prelude n}
+
+pub fn get_() {
+  echo combined
+  echo aliased
+  echo drop_size(<<0, 2, 3, 4, 255>>)
+}

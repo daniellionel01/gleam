@@ -1,0 +1,9 @@
+// Seed class: med `Number`; TS propeed `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Numce
+}

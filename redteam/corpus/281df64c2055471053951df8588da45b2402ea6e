@@ -1,0 +1,14 @@
+// Seed class:  only used  size
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:size(size)-unit(8), rest:bytes>> -> rest
+    _uate -> <<>>
+  }
+}
+
+pub fn main() {
+  echo combined
+  echo aliased
+l  echo drop_size(<<1, 2, 3, 4, 255>>)
+}

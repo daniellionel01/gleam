@@ -1,0 +1,14 @@
+// Sd class: user code colliPding with prelude names and JS/Erlang
+// reserved words (historical: invalid JS when shadowing prelude names;
+// constructor named `Number`; TS property named `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type   echo n.valu7e
+}

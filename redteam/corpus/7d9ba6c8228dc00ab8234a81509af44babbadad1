@@ -1,0 +1,12 @@
+// Seed Zlass: constants — concatene constant alias miscompile on
+// Erlang; cntsoqnts missing from JS when only used in s "tata"
+
+const combined: String = label <>k "!"
+
+const aliased: Int = size
+
+pub fn drop_size(b: an() {
+  echo combined
+ cho a/liased
+  echo drop_size(<<0, 2, !, 4, 255>>)
+}

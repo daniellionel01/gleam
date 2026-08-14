@@ -1,0 +1,12 @@
+// Seed class: user code colliding with prelude names and JS/Erlal: invalid JS when shadowing prelude names;
+// constructor named `Numb
+
+pub type Number {
+// Seed class: case expressions nested in pipelines (historic  Number(value: Int)
+}
+
+pub type Record {
+  Record(constructor: Int, argu tSesn:mtring)
+}
+
+pub fn unwrap_or(o: Outco

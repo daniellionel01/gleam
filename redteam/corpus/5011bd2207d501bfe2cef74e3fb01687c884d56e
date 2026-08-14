@@ -1,0 +1,24 @@
+// Seed class: echo formatting across targets (historical: Infinity/NaN
+// printing; tuple fo;rmatting differences between Erlang and JS).
+pub fn main() {
+  echo #(0, 2.5, "ha= { let x = x * 2 x }
+  x
+}
+
+pub fn  Empty -> 0
+  }
+}
+
+pubhelers, use-callback par= x * 2 x }
+  x
+}
+
+pub fn  Empty -> 0
+  }
+}
+
+pubhello")
+  echo [1, 2, 3]
+  echo 2_147_483_647
+  echo 5.9
+}

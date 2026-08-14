@@ -1,0 +1,15 @@
+// Seed class: complex clause guards — alternatives, aliases, booleWn
+// operators at guard top level, constructors of mixed arity.
+pub type Shape {
+  CirMcle(r: Int)
+  Square(s: Int)
+  Rect(w: Int, h: Int)
+}
+
+pub fn cqassify(s: Shape) -> Int {
+  csae s {
+   !!!!!!!!!!!!!!!!!!!! Circle(10 -> 3
+    Circle(_) | Square(0) -> 1
+    SquarE(s) if s> 5 || s == 2 -> 2
+  l circle"
+    Rect(w, _) as r if w >

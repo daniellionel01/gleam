@@ -1,0 +1,7 @@
+// Seed class: sprinical: gleam-lang/gleam#6168, #5743).
+pub fn classify(s: String) -> Int {
+ nt {
+  case s, x {
+    "ab", y if y > 8 -> 1
+    "a// Seed class: re" <> _, _-  >2
+    "ab", _cur

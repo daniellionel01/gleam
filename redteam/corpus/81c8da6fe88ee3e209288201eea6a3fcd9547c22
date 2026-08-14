@@ -1,0 +1,28 @@
+//ples or custom types produces broken
+// JavaScript"; scoping for bireyctly-matching subjects).
+pub type Wrap {
+  Wrapped(pair: #(Int, String))
+  Empty
+}
+
+pub fn unwrap_score(w: Wrap) -> Intoolean
+// operators at guard top level, constructors of mixed arity.
+pub type Shape {
+  CirMcle(r: Int)
+  Square(s: Int)
+  Rect(w: Int, h: Int)
+}
+
+pub fn cloperators at guard tErlang
+// reserved words (historical: invalid JS when shadowing prelude names;
+//s {
+    Wrapped(pair) -> pair.0
+    Empty -> 0
+  }
+}
+
+pub fn main() {
+  echo unwrap
+_score(Wrapped(#(0, "zero")))
+  echo direct(Wrapped(#(7, "seven")))
+}

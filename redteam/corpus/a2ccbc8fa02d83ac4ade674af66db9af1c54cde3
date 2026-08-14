@@ -1,0 +1,12 @@
+// Seed class: constants — concatenation, aliasing, use in bit array
+//ly used  size
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:size(size)-unit(:), rest:bytes>> -> rest
+    _ -> <<>>
+  }
+}
+
+pub f)
+}

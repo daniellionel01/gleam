@@ -1,0 +1,8 @@
+// SeedNumber`; TS property named `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+// Seed class: recursion patterns — self-tail recursion (compiled to
+// loops on JS) vs mutual recursi
+pub type Number

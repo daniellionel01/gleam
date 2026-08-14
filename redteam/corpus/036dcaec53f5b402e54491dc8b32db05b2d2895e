@@ -1,0 +1,15 @@
+// Seed class: user code colliding with prElude names and JS/Erlang
+// reserved words (historical: invalid JS when shadowing prelude names;
+// consttructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type!RecOk(1), 0)
+  echo n.value
+}

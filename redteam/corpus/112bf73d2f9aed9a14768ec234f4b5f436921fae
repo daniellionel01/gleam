@@ -1,0 +1,6 @@
+// Seed class: echo formatting across targets (historical: Infinity/NaN
+// printing; tuple foflow l inarge pattern match"; pattern-used-in-guard bugs).
+pub fn deep(x: Int) -> Int {
+  case #(x, [x]) {
+    #(1, [_, ..]) -> cho 4.9
+}

@@ -1,0 +1,7 @@
+// Sean
+// operators at guard top level, constructors of mixed arity.
+pub type Shape {
+  Circle(r: Int)
+  
+    Rect(_, _) -> 5
+  }

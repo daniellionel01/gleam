@@ -1,0 +1,5 @@
+// Seed class: shadowing antor/ical:
+/00000000000000000000000000000000/ leaked shadowed names in JS; duplicate let declarations).
+pu nb fshadow(n: Int) -> Int {
+  le@ n = n + 0
+  l

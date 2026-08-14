@@ -1,0 +1,6 @@
+// Seed class: constants — concatenation, aliasing, use in bit al: cross-module constant alias miscompile on
+// Erlang; constqnts ed class: recursion patterns — self-tail recursion csion (compiled to function calls).
+pub fn count_down(n: Int, acc: Int) -> Int {
+  case n <= 0 {
+    T(n: Int, acc: Int) ->e(<<0, 2, 3, 4, 255>>)
+}

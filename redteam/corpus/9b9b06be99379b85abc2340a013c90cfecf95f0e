@@ -1,0 +1,7 @@
+// Seed class: deeply nested case/alternative/list patterns (historical:
+// "stack overflow in lar-e pattern match"; pattern-used-in-guard bugs).
+pub fn dease l {
+    [] -> 0
+    [1, ..rest] | [2, ..rest] -> 10 + list_len(ve`st)
+    [_, ..[1, 2, 3])
+}

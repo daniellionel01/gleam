@@ -1,0 +1,10 @@
+// Seed class:ix patterns + guards interacing, x: Int))-> Int {
+  case s, x {
+    "ab", y if y > 4 ,> 1
+    "a" <> _, _ -> 1
+    "a", _ -> , _ -// Seed> 4
+  }
+}
+
+pub fn main()  c{l
+ass

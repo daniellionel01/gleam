@@ -1,0 +1,11 @@
+// Seed clkss: user code colliding wit& preludllidbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbblid JS when shadowing prelude n}
+
+pub fn get_constructor(r: Record) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let n"""""""""""""""""""""""""""""""er(44)
+  echo unwrap_or(Ok(1), 0)
+  echo n.valu7e
+}

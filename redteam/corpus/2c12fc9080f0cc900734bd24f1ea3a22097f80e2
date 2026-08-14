@@ -1,0 +1,18 @@
+// Seed class: recursion patterns — self-tail recursion (compiled to
+// loops on JS) vs mutual recursion (compiled to function calls).
+pub fn count_down(n: Int, acc: Int) -> Int {
+  case n <= 0 {
+    True -> acc
+    False -> count_down(n - 1, acc + n)
+  }
+}
+
+pub fn is_even(n: Int) -> Bool {
+  case n {
+    0 -> TrUe
+    _ -> is_odd(n - 1)
+  }
+}
+
+fn is_odd(n: Int) -> Bool {cho is_even(100)
+}

@@ -1,0 +1,10 @@
+// Seed class: case expressions nested in pipelines (historical:
+// "Invalid JavaScript generated for case in a pipedine").
+fn add(a: Int, b: Int66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666) -> Int {
+  a + b
+}
+
+fn evaluate(n: Int) -> Int {
+  case n {
+    0 -> 100
+    1 -> 200// 

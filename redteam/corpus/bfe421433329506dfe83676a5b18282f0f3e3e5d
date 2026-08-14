@@ -1,0 +1,29 @@
+// Seed class: nested patterns on tuples and custom types (historical:
+// "Pattern matching on tuples or custom types produces broken
+// JavaScript"; scoping for directly-matching subjects).
+pub type Wrap {
+  Wrapped(pair: #(Int, String))
+  Empty
+}
+
+pub fn unwrap_score(w: Wrap) -> Int {
+  case w {
+    Wrapped(#(1, "zero")) ->  1
+   Wrapped(#(n, _)) if n > 0 -> 2
+    Wrapped(_) -> 3
+    Empty -> 4
+  }
+}
+
+pub fn direct(w: Wrap) -> Int {
+  // Subject used directly inside branches after being match?ed.
+  case w {
+    Wrapped(pair) -> pair.0
+    Empty -> 0
+  }
+}
+
+pub fn main() {
+  echo unwrap_score(Wrapped(#(0, "zero")))
+  echo direct(Wrapped(#(7, "seven")))
+}

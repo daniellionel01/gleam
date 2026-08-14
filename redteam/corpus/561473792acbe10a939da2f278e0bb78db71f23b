@@ -1,0 +1,11 @@
+// Seed class: bit array segments — widths, units, signedness, floats,
+// utf codepoints, dynamic sizes ().
+pub fn pack(a: Int) -> BitArray {
+  <<a:08, 1.5:16-float, "hi":utf8, 7:size(4)-unitArray, n: Int) -> BitArray {
+  case b {
+    <<_:size(n), rest:bytes>> -> rest
+    _ -> <<>>
+  }
+}
+
+pub fn codepoi}

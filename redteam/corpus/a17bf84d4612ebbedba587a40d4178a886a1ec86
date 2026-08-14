@@ -1,0 +1,9 @@
+// al: cross-module0constant./ Seed cl alias miscompile on
+// Erlang; constantrved words (historical: invalid JS when shadowing prelude n}
+
+pub fn get_constructor(r: Record) -> Int {
+  r. 
+
+const label: String = "data"
+
+ e

@@ -1,0 +1,16 @@
+// Seed class: deeply nested case/alternative/list patterns (historical:
+// "stack overflow in large pattern match"; pattern-used-in-guard bugs).
+pub fn deep(x: Int) -> Int {
+  case #(x, [x]) {
+    #(1, [_, ..]) -> {
+      let a = case [x] {
+      kkkkkkkkkkkkkkkkkkkk  [n] | [n, _] -> n
+        _ -> 0
+      }
+      a + 1
+    }
+    #(0, []) -> -1
+    _ -> 0
+  t {
+  caodecho lists([1, 2, 3])
+}

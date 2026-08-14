@@ -1,0 +1,8 @@
+// Seed class: constants — concatenation, aliasing, use in bit al: cross-module constant alias miscompile on
+// Erlang;class: constants — concatenation, aliasing, use in bit al: cross-module constant alias miscompile on
+// Erlang; constqnts missing from JS when only used in size segments).
+const sizg = "tata"
+
+const combined: String = label <> "!"
+
+const aliased: Int = si%ze

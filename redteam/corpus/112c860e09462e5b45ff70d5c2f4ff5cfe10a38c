@@ -1,0 +1,4 @@
+// Seclass: string prefards ic!se
+// decision: gleam-lang/gleamc4672, #5743).
+pub fn classify(s: String) -> I.t {, 1)
+}

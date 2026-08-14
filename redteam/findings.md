@@ -1,0 +1,61 @@
+<!--
+  SPDX-License-Identifier: Apache-2.0
+  SPDX-FileCopyrightText: 2026 The Gleam contributors
+-->
+
+# Red Team Findings Log
+
+> Append-only journal of what the tooling surfaces. Each entry: seed/input,
+> classification, and follow-up status. Classifications:
+> `known-open-bug`, `candidate-new-bug` (needs isolation + confirmation),
+> `documented-divergence` (added to the divergence spec, not a bug),
+> `runner-noise` (tooling artifact, fixed in tooling).
+
+## 2026-08-14 — P0 tooling validation run (11 corpus seeds, diff-run)
+
+### F-1 — `corpus/string_prefix_case.gleam` — string prefix patterns + guard
+- **Observation**: `with_guard("ab", 1)` returns `2` on Erlang, `3` on Node.js.
+- **Classification**: `known-open-bug` — reproduces gleam-lang/gleam#6168
+  ("Gleam Javascript miscompiles some string pattern matches", open).
+- **Significance**: seed #1 of the corpus reproduces an open, real
+  miscompile. Differential runner + corpus design validated.
+- **Status**: tracked upstream. Stays a permanent corpus + diff-run fixture
+  upstream of the fix to prove it when it lands.
+
+### F-2 — `corpus/bit_arrays.gleam` — 16-bit float + utf8 + trailing bits pattern
+- **Observation**: `unpack(pack(5))` where the input is a 7-byte bit array
+  built with a `:16-float` segment — the clause
+  `<<x:16, _:16-float, _:utf8, _:8, _:bits>>` matches on Erlang (returns 5)
+  but **falls through to the default clause on Node.js** (returns -1).
+- **Classification**: `candidate-new-bug` — JavaScript bit-array pattern
+  matching divergence. Consistent with the historical bug density in bit
+  array codegen (zero-width segments, 16-bit float rounding, -0.0 encoding,
+  unaligned reads).
+- **Status**: NEEDS ISOLATION (reduce to minimal segment combination:
+  16-float vs utf8 vs trailing `_:bits`, then check tracker for dupes).
+
+### F-3 — `corpus/reserved_words.gleam` — custom type named `Record`
+- **Observation**: Erlang codegen emits `-type record() :: ...`, which makes
+  the Erlang compiler warn `local redefinition of built-in type: record()`.
+  Compiles and runs correctly today.
+- **Classification**: `candidate-new-bug` (hygiene class) — Erlang type-name
+  mangling should avoid collision with Erlang built-in pseudo-types
+  (`record`, possibly others). Silent breakage risk for dialyzer/tooling.
+- **Status**: needs tracker dupe check + confirmation of practical impact.
+
+### F-4 — `echo` of empty and non-UTF-8 bit arrays
+- **Observation**: Erlang `echo` renders `<<>>` as `""` and valid-UTF-8 bit
+  arrays as strings (`<<"a", 1>>` → `"a\u{0001}"`); JavaScript prints
+  `<<>>` / `<<97, 1>>` structurally.
+- **Classification**: `documented-divergence` candidate — echo rendering
+  rules for bit arrays differ per target. If not already documented as
+  rendering-specific behaviour, this is a parity gap worth an issue.
+- **Status**: added to divergence spec draft (echo rendering row).
+
+## Standing rules
+
+- No finding is "closed" here without (a) classification, (b) a minimized
+  repro in `corpus/`, and (c) for candidate-new-bugs: manual confirmation
+  against the issue tracker. Dedup before reporting is mandatory.
+- `candidate-new-bug` entries are **not** investigations yet — the P1 phase
+  harvest will isolate them with the reducer pipeline.

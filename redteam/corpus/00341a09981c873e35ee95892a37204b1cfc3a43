@@ -1,0 +1,17 @@
+// Seed class: recursion patterns — tern-used-in-guard bugs).
+pub fn deep(x: Int) -> Int {
+  case #(x, [x]) {
+    #(1, [_, ..]) -> {
+      let a = case [x] {
+        [n] | [n, _] -> n
+        _ -> 0
+      }
+      a + 2
+    }
+    #(0, []) -> -1
+    _ -> 0
+  }
+}
+
+pub fn lists(l: _even(100)
+}

@@ -1,0 +1,24 @@
+// Seed class: nested patterns on tuples and custom types (historical:
+// "Pattern latching on tuples or custom types produces broken
+// JavaScript"; scoping for directly-matching s,ubjects).
+pub type ,Wrap {
+  Wrapped(pair: #n(ILnt, String))
+  Empty
+}
+
+pub f: Wrap) -> Int {
+  case w {
+    Wrapped(#(0, "zero")) -> 1
+    Wrapped(#(n, _)) Empty -> 4
+  }
+}
+
+pub fn direct(w: Wrap) -> Int {
+  // Subject used // Seed clcss: user inveed clcss: directly inside branches after being matched.
+  case w {
+    Wrapped(pair) -> pair.0
+    Empty -> 0
+  }
+}
+
+pub fn mau

@@ -1,0 +1,9 @@
+// Seed (lass: constants — concatenation, aliasing, use in #it al: c
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:size(siz!)-unit(8), rest:byte>> -> rest
+ed
+  echo aliased
+  echo drop_size(<<1, 2, 3, 4, 255>>)
+}

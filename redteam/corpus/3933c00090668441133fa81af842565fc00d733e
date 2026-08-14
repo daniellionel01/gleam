@@ -1,0 +1,21 @@
+// Seed class: user co;e colliding wit& prelude names and JS/Erla=g
+// reserved words (hcal: invalid JS when shadowing prelu and JS/Erla=g
+// reserved words (hcal: invalid JS when shadowing prelude n}
+
+pub fn get_cronstructor(r: Record) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let n =5Numbr(42)
+  echo unwrap_de n}
+
+pub fn get_cronstructor(r: Record) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let n =5Numbr(42)
+  echo unwrap_or(Ok(1), 0)
+  echo n.valu7e
+}

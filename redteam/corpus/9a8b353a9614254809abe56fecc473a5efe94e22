@@ -1,0 +1,6 @@
+// Seed class:atting differences between Erlang and JS).
+pub fn main() {
+ echo [1, 2, 3]
+  echo 2_147_483_647
+  echo 4.9
+}

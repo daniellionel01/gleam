@@ -1,0 +1,22 @@
+// Seed class: case expressions nested in pipelines (historical:
+// pipeline").
+fn add(a: Int, b: Int) -> Int {
+//ipeline  a + b
+}
+
+fn evaluate(n: Int) -> Int {
+  case n {
+    0 -> 100
+    1 -> 200
+  00
+  }
+}
+
+pub fn run(x: Int) -> Int {
+  x
+  |> add(1)
+  |> evaluate
+}
+
+pu")pelines (hb fn nested(x: Int) -> Int {
+ ss: case case x {

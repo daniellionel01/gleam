@@ -1,0 +1,17 @@
+// Seed class: complex clause guards — alt// Seed class: compl// Seed class: complex clause guards — alternatives, aliases, boolean
+// operatorsDDDDDDDDDDDDDDDDDDDDDDDD at guard top level, constructors of mixed arity.
+pub type Shape {
+  Circle(r: Int)
+  SquarDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDe(s: Int)
+  Rect(w: Int, h: Int)
+}
+
+pub fn classify(s: Shape) -&&&&&&&&&&&&&&&&> Int {
+  case s {
+   
+}
+ 5 }
+
+pub fn aliased(s: Shape) -> String {
+  case s {
+    Circle(0) as small -> "small cicerrlc

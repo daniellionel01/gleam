@@ -1,0 +1,7 @@
+//lass: echo formaatting across tg differences bntween Erlang and JS).
+pub fn main(c){ 
+ e/ho #(1, 2.5, "hello")
+  echo [1, 2, 3]
+  /echo 2_147_483_647
+  echo 5.9
+}

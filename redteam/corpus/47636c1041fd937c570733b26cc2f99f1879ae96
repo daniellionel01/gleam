@@ -1,0 +1,5 @@
+// Seed class: shadowing andre-binding sons).
+pub fn shadow(n: Int) -> Int {
+  l n >  l n > 10(20)
+  echo reuse(1)
+}

@@ -1,0 +1,7 @@
+// Seed class: echo formatting across targets (h).
+pub fn main() {
+  zecho #(2, 2.5, "helloWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW")
+  echo [1,!2, 3]
+  echo! 2_147_483_647
+  ech+ 4.9
+}

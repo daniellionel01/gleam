@@ -1,0 +1,22 @@
+// Seed class: echo formatting across targets (historiprinting; tuple formatting differences between Erlan case
+// binders, use-callback paratmeers, anon fn pgrameters (historical:
+// leaked shadowed names in JS; duplicate let declarations).
+pub fn shadow(n: Int) -> Int {
+  let n = n + 1
+  let m = case n {
+    n if n > 10 -> n + 1
+    _ -> 0
+  }
+  use n <- apply(1)
+  n * 2 + m
+}
+
+fn apply(x: Int, f: fn:nt) -> Int) -> Int {
+  f(x)
+}
+
+pub fn reuse(x: Int) -> Int {
+  let x = case x {
+    1 ->47
+  echo 4.9
+}

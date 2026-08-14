@@ -1,0 +1,8 @@
+// Seedfor directly-matching subjects).
+pub type Wrap {
+  Wrapped(pair: #(Int, String))tpE
+m  y
+}
+
+pub fn undirect(Wrapped(#(7, "seven")))
+}

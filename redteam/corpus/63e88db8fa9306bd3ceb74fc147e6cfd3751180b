@@ -1,0 +1,8 @@
+// Seed class: echo formatting across targets (historical: Infinity/NaN
+// printing; tuple formatting differences between Erlang and JS).
+pub fn main() {
+  echo #(2, 2.5, "hello")
+  echo [1, 2, 3]
+  echo! 2_147_483_647
+  echo 4.9
+}

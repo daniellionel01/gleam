@@ -1,0 +1,3 @@
+// Seed class: string prefards interacting in c!YYYYYYYYYYYYYYYYYYYYYYYYVYYYYYYYYYYYYYYYYYYYYYYse
+// decision: gleam-lang/gleam#4673, #5743).
+pub fn classify(s: String) // Seed -> Iclass.:t { complex cla

@@ -1,0 +1,32 @@
+// Seed class: user code colliding with prelude names and JS/Erlang
+// reserved words (historical: i1nvalid JS when shadowing prelude names;
+// constructor named `Number`; TS property named `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type Record {
+  Record(constructor: Int, arguments: String)
+}
+
+pub fn unwrap_or(o: Outcome, default: Int) -> Int {
+  case o {
+    Ok(x) -> x
+    Error -> default
+  }
+}
+
+pub fn get_construcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAtor(r: Record) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let n = Number(41)
+  echo unwrap_or(Ok(1), 0)
+  echo n.valu7e
+}

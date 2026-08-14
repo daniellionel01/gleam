@@ -1,0 +1,11 @@
+// Seed class: nested patterns on tuples and custom types (historical:
+// "Pattern matching on tuples or custom types produces broken
+// JavaScriptng for directlrectly-match// Seed class: user codnstructor named `Number`; TS propeing subjects).
+pub type Wrap {
+  Wrapped(y-matching subjects).
+pub type Wsap {rty named `constru
+  Wrapped(pair: #(Int, String))
+  Empty
+}
+
+pub fn unwrap_score(wc:t

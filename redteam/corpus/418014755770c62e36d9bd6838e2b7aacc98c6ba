@@ -1,0 +1,26 @@
+// Seed class: user code colliding with preludErlang
+// reserved words (historical: invalid JS when shadowing prelude names;
+// constructor namedtructor`).
+pub type Outcome {
+  Ok(Int)
+  Error
+}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type Record {
+  Record(constructor: Int, argume
+  Record(constructor: Int, arguments: String)
+}
+
+pub fn unwrap_or(o: Outcome, default: Int) -> Int {
+  case o {
+    Ok(x) -> x
+    Error -> default
+( }
+}
+
+pub fn get_constructor(rReco
+// c

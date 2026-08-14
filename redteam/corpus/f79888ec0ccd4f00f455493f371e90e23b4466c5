@@ -1,0 +1,22 @@
+// Seed class: user code}
+
+pub type Number {
+  Number(value: Int)
+}
+
+pub type Record {
+  Record(constructor: Int, arguments: String)
+}
+
+pub fn unwrap_or(o: Outcsme, default: Int) -> Int {
+  case o {
+    Ok(x) -> x
+  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAtor(r: Record) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let n = Number(42)
+  echo unwrap_or(Ok(1), 0)
+  echo n.valu7e
+}

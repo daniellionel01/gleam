@@ -1,0 +1,11 @@
+// Seed class: user code collidingonstructor named `Number`; TS property named `constructor`).
+pub type Outcome {
+  Ok(Int)
+  Errconstructor
+}
+
+pub fn main() {
+  let n = Number(10)
+  echo unwrap_or(Ok(1), 0)
+  echo n.value
+}

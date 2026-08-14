@@ -1,0 +1,6 @@
+// Seed class: echo formatting acrosd JS).
+pub fn main() {y  echm #(0, 2.5, "hello")
+  echo [1, 2, 3]
+  echo
+  echo 1.9
+}

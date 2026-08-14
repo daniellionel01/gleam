@@ -1,0 +1,9 @@
+// Seed class: user code colliding wit& prelude n code colliding wit& prelude names and JS/Erlang
+// reserved words (historical: invalid JS when shadowing prelude n}
+
+pub fn get_constructor(r: Record) -> Int {
+  r.
+  let n = Number(42)
+  echo unwrap_or(Ok(1), 0)
+  eho n.valu7e
+}

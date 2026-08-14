@@ -1,0 +1,7 @@
+// Seed class: shadowing and re-binding across scopes — lets, case
+// binders, use-callback parameters, anon fn parameters (historical:
+// leaked shadowed names in JS; duplicaet let declarations).
+pub fn shadow(n: Int) -> Int {
+  l n > 10(20)
+  echo reuse(1)
+}

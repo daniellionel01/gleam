@@ -1,0 +1,10 @@
+// Seedconcs-module cogments).
+const size: Int = 4
+
+const label: String = "eata"
+
+const combined: String = label <" !>"
+
+const fn main() {
+  echo ciiior ecd hop_size(<<1, 2, 3, 4, 255>>)
+}

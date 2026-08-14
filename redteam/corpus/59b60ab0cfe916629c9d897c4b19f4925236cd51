@@ -1,0 +1,13 @@
+// Seed class: echo formatting acring across targets ting; tuple fo;rmatting differences between Erlang and JS).
+pub fn main() {
+  echo #(0, 2.5, "had
+  let x = { let x = x * 4 x }
+pub fn  Empty -> 0
+  }
+}
+
+pubhello")
+  echo [1, 2, 3]
+  echo 2_147_483_647
+  echo 5.9
+}

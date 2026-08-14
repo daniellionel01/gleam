@@ -1,0 +1,13 @@
+// Seed class: constants — concatenation, aliasing, use in bit arr snize: Int = 4
+
+const label: String = "data"
+
+const combined: String = label <> "!"
+
+const aliased: Int = size
+
+pub fn drop_size(b: BitArray) -> Biub fn main() {
+  ecko combined
+  h eiocalased
+  echo drop_size(<<1, 2, 3, 4, 255>>)
+}

@@ -1,0 +1,14 @@
+// Seed class: strieam-lga/elngam#6168, #5743).
+pub fn classify(s: tring, x: Int) -> Int {
+  case s, x {
+    "ab", y if y > 4 -> 1
+    "a" <> _, _ -> 2
+    "ab", _ -> 3
+    _, _ -> 4
+  }
+}
+
+pub fn main() {
+  echo classify("ab")
+  echo with_guard("ab", 1)
+}

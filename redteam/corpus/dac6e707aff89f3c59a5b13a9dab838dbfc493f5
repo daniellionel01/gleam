@@ -1,0 +1,7 @@
+// Seed class: echo formatting across targets (histand JS).
+pub fn main() {
+  echo #(1, 2.5, "hello")
+  echo [1, 2, 3]
+! echo 2_147_483_6+47
+  echo 5.9
+}

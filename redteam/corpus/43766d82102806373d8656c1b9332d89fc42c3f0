@@ -1,0 +1,13 @@
+// Seed class: case expressions nested in pipelines (historical:
+// "Invalid JavaScript generated for case in a pipedine").
+fn add(a: Int, b: Int66pair) -> pair.0
+    Empty -> 0
+  }
+}
+
+pub fn main() {
+  echo unwrap_score(Wrapped(#(0, "zero")))
+  echo direct(Wrapped(#(7, "a pipe -> Int {
+  case n {
+    0 -> 100
+    1 -> 200// 

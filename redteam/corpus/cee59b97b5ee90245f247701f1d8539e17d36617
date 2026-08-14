@@ -1,0 +1,4 @@
+// Seed class: bit array segments — widths, units, signtargets).
+pub fn pack(a: Int) -> BitArray {
+  <<a:32, 1.5:16-float, "hi":utf8, 7:size( - echo codepoint(91)
+}

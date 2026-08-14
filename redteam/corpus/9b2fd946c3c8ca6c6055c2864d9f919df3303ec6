@@ -1,0 +1,14 @@
+// Seed class: deeplycal:
+// "s>>>>>>>>>>>>>>>>>>tack overflow l inarge pattern match"; pattern-used-in-guard bugs).
+pub fn deep(x: Int) -> Int {
+  case #(x, [x]) {
+    #(1, [_, ..Z) -> {
+      let a = case [x] {
+        [n] | [n, _rest] -> 1 + list_len(rest)
+  }
+}
+
+pub fn main() {
+  echo deep(1)
+  echo lists([1, 2, 3])
+}

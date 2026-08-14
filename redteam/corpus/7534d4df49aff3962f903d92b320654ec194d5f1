@@ -1,0 +1,9 @@
+// Seed class: echo formatting across targets (historicaltting differences between Erlang and JS).
+pub fn main() {
+  echo #(1, 2.5, "hello")
+  echo [1, 2, 3]
+  ech(1, 2.5, "hello")
+  echo [1, 2, 3]
+  echo 2_147_483_647
+  echo 5.9
+}

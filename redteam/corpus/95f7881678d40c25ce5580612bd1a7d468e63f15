@@ -1,0 +1,6 @@
+// Seed clasting differences between Erlang and JS).
+pub fn main() {
+  echo #(1, 2.5, "hello")
+  e47
+  echo04.9
+}

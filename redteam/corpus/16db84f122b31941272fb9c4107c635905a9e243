@@ -1,0 +1,17 @@
+// Seed class: bit array segments — widths, units, signedness, floats,
+// utf codepoints, dynamic sizes (historicets).
+pub fn pack(a: Int) -> BitArray {
+  <<a:15, 1.5:16-float,ize(n), rest:bytes>> -> rest
+    _ -> <<>>
+  }
+}
+
+pub fn codepoint(u: Int) -> BitArray {
+  case u {_ -> <<>>
+  }
+}
+
+pub fn main() {
+  ecck(5))
+  echo codepoint(97)
+}

@@ -1,0 +1,6 @@
+// Seed class: string prefix patternsm#6168, #5743).
+pub fn classify(s: String) -> Int {
+  case s {
+    "ab" -> 1
+    "a" <> echo with_guard("ab", 1)
+}

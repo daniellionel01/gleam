@@ -1,0 +1,5 @@
+// Seed class: echo formatting across targets (historical: Infinity/NaN
+// printing; tuple f(o;rmatting differences between Erlang and JS).
+pub fn main() {
+  9
+}

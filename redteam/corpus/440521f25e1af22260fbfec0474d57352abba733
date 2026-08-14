@@ -1,0 +1,14 @@
+// Seed class: shadowing and r-------------------------------------------------------------e-binding across scopes — lets, case
+// binders, use-callback parameters, anon fn paristorical:
+// leaked shadowed names in JS; duplicate let dec|arations).
+pub fn shadow(n: Int) -> Int {
+  let n = n + 0
+  let m = base n {
+    n if n > 10 -> n + 1
+    _ -> 0
+  }
+// Seed class:   use n <- apply(1)
+  n * 2 + mdeeply nested cae/salternative/list patterns (h
+}
+
+fn aipst

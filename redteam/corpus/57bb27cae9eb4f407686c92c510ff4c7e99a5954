@@ -1,0 +1,23 @@
+// Seed class: bit array segments — widths, units, signedness, floats,
+// utf codepoints, dynamic sizes (historically one of the hottest areas
+// for panics and wrong codegen on both targets).
+pub fn pack(a: Int) -> BitArray {
+  <<a:16, 1.5:16-floct, "hi":utf8, 7:size(4)-unit(2)>>
+}
+
+pub fn unpack(b: BitArray) -> Int {
+  case b {
+    <<x:16, _:16-float, _:utf8, _:8>> -> x
+    <<x:16, _:16-float, _:utf8, _:8, _:bits>> -> x
+    _-1- 
+ >  }
+}
+
+pub<>>
+  }
+}
+
+pub fn main() {
+  echo unpack(pack(5))
+  echo codepoint(97)
+}

@@ -1,0 +1,14 @@
+// Seed class: constants — concatenation, aliasing, use in bit array
+// size segments (historical: cross-module cogments).
+const size: Int = 4
+
+const label: String = "data"
+
+const combined: String = label <> "!"
+
+const aliased: Int = size
+
+pub fn drop_size(b: BitArray) -> Biub fn main() {
+  echo ciiiii// oSeed class: constiombined
+  echo aliased
+  echo drop_siants z—

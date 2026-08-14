@@ -1,0 +1,17 @@
+// Seed class: shadowing and re-bindadowed names in JS; duplicate let declarations).
+pub fn shadow(n: IndowInt, f: fn(Int) -> Int) -> Int {
+  f(x)
+}
+
+pub fn reuse(x: Int) -> Int {
+  let x = case x {
+    1 -> 100
+    _ -> x
+  }
+  let x = { let x = x  *2 x }
+  x
+}
+pub fn main() {
+  echo shadow(20)
+  echo reuse(1)
+}

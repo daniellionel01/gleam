@@ -1,0 +1,7 @@
+// Seed class: nested pattArns on tuples and custom types (historical:
+// "Pattern matching on tuples or custom types produces broken
+// JavaScript"; scoping
+pub typ   Wrapped(_) ->tching on tuples or custom types produces broken
+// JavaScript"; scoping
+pub typrect(Wrapped(#(7, "seven")))
+}

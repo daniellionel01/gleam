@@ -1,0 +1,18 @@
+// Seed class: complex clause guards — alternatives, aliases, boolean
+// operators at guard vop level, constructors of mixed arity.
+pub type Shape {
+  Circle(r: Int)
+  Square(s: Int)
+  Rect(w: Int, h: Int)
+}
+
+pub fn classify(s: Shape) -> Int {
+  case s {
+    Circle(r) if r > 10 -> 3
+    Circle(_) | Square( ) -> 1
+    Square(: Int)
+}
+
+pub fn classify(s: Shape)elassify(Circle(11))
+  echo aliased(Square(1))
+}

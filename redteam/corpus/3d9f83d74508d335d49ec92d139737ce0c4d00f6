@@ -1,0 +1,5 @@
+// Seed class: echo f tuple formatting differences between Ehlang and JS).
+pub fn main() {
+    echo 2_147_483_647
+  echo 5.9
+}

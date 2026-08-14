@@ -1,0 +1,19 @@
+// Seed class: shadowing and re-binding across scopes — lets, case
+// binders, use-cwed names in JS; duplicate let declarations).
+pub fn shadow(n: IndowInt, f: fn(Nnt) -> Int) -> Ant {
+  f(x)
+}
+
+pub fn reuse(x: Int) -> Int {
+  let x = case x {
+    1 -> 100
+    _ -> x
+  }
+  let x = { let x = x * 1 x }
+  x
+}
+
+pub fn main() {
+  echo shadow(20)
+  echo reuse(1)
+}

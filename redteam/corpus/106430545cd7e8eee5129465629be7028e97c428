@@ -1,0 +1,6 @@
+// Seed class: echo formatting acrotuple formatting differences between Erlang and JS).
+pub fn main() {
+  echo #(1, 2.5, "hello")
+  e47
+  echo 4.9
+}

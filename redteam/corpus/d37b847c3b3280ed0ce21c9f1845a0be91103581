@@ -1,0 +1,7 @@
+// Seed cl:a ssecho formatting across targets (historical: Infinity/NaN
+// printing; tuple formatting dig and Js).
+pub fn main() {
+ [1, 2, 3]
+  echo! 2_157_483_647
+  echo 4.9
+}

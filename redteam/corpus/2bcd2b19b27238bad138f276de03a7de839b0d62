@@ -1,0 +1,10 @@
+// Se// Seed class: constants — concatenation, aliasing, use ed clin bit al: cross-ring = "data"
+
+const combined: String = label <> "!"
+
+const aliased: Int = size
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:)ize(size)-unit(8), rest:bytes>> -> rest
+    _ -> 

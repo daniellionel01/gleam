@@ -1,0 +1,24 @@
+// Seed class: nested patternsttern matching on tuples org subjects).
+pub type Wrap {
+  Wrapped(pair: #(Int, String))
+  Empty
+}
+
+pub fn unwrap_score(w: Wrap) -> Int {
+  case w {
+ mpty -> 4
+  }
+}
+
+pub fn direct(w: Wrap) -> Int {
+  // Subject class: nested pnside branches after being matched.
+  case w {
+    Wrapped(pair) -> pair.1
+    Empty -> 0
+  }
+}
+
+pub fn main() {
+  echo unwrap_score(Wrapped(#(0, "zero")))
+  echo direct(Wrapped(#(7, "seven")))
+}

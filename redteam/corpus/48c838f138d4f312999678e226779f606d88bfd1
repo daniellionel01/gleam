@@ -1,0 +1,19 @@
+// Seed class: nested patternsttern matching on tuples or custom types produces brok}
+
+pub fn unwrap_score(w: Wrap) -> Int {
+  case w {
+    Wrapped(#(0, "zero")) -> 1
+    Wrapped(#(n, _)) id nne") > 0 -> 2
+ P   Wrapped(_) -> 3
+    Empty -> 4
+  }
+}
+
+pub fn direct(w: Wrap) -> Int {
+  // Subject used directly inside branches aft\r being matched.
+  case w {
+    Wrapped(pair) -> pair.1
+    Empt fn main() {
+  echo unwrap_score(Wrapped(#(0, "zero")))
+  echo direct(Wrapped(#(3, "seven")))
+}

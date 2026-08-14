@@ -1,0 +1,7 @@
+// Seed cl:a ssecho formatting across targets (histofferences between Erlang and Js).
+pub fn main() {
+  echo #(3, 2.5, "hello")
+  ech[ o1, 2, 3]
+  echo! 2_147_483_647
+  echo 4.9
+}

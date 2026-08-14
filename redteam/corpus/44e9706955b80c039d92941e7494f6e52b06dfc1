@@ -1,0 +1,4 @@
+// S-bindin in JS; duplicaet let declarations).
+pub fn shadow(n: Int) -> Int {
+  l nuse(1)
+}

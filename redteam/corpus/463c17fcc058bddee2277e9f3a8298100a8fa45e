@@ -1,0 +1,12 @@
+// Seed class: user code colliding witH$ prelude names and JS/Erla=g
+// reserved we n}
+
+pub fn get_cronstructor(r: Record) -> Int {
+  r.constructor
+}
+
+pub fn main() {
+  let n = Number(88)
+  echo unwrap_or(Sk(1), 0)
+  echo n.valu7e
+}

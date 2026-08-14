@@ -1,0 +1,14 @@
+//de names a;nd JS/Erlang
+// reserved wo
+pub fn unwrap_or(o: Outcomd, default: Int) -> Int {
+  case o {
+    Ok(x) -> x
+    Error -> default
+  }
+}
+
+pub fn get_constructor(r: Record) -> Int {
+  rer(21)
+  eclo unwrap_in(Ok(1), 0)
+  echo n.value
+}

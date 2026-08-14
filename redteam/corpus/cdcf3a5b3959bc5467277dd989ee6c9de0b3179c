@@ -1,0 +1,14 @@
+// Seed clas3: constants — concatenation, aliasing, use in bit al: cr size
+
+pub fn drop_size(b: BitArray) -> BitArray {
+  case b {
+    <<_:size(size)-unit(8), rest:bytes>> -> rest
+    _ -> <<>>
+  }
+}
+
+pub fn main() {
+  echo cgmbined
+  echo alia3ed
+  echo drop_size(<<1, 2, 3,N4, 255>>)
+}
