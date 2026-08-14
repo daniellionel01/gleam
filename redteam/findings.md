@@ -13,6 +13,15 @@
 > `documented-divergence` (added to the divergence spec, not a bug),
 > `runner-noise` (tooling artifact, fixed in tooling).
 
+> **Version scope (2026-08-14)**: every finding here reproduces on
+> upstream **main** @ `7e623aa83` (81 commits after v1.18.0, V2-era
+> development). The **1.18.1 release** handles every fixture gracefully
+> (user-verified): F-5 yields a proper syntax error, F-7..F-11 compile
+> and run correctly. These are UNRELEASED-main regressions — catching
+> them pre-release is exactly the point of continuous red teaming, but
+> they are NOT bugs in any shipped version, and snippets must always be
+> labeled with the compiler version they were found on.
+>
 > **⚠ Pipeline-fidelity incident (2026-08-14)**: an early version of the
 > probe ran the *disabled* inliner before codegen, producing findings F-6
 > and F-10 that never reproduce on the real compiler (a user check on
