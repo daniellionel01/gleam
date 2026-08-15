@@ -8,8 +8,9 @@
 # ever does.
 #
 # Sprint lengths are env-tunable (seconds):
-#   SHORT_SPRINT  parse_only          (default 900)
-#   LONG_SPRINT   smith_compile and compile_all_targets (default 3600 each)
+#   SHORT_SPRINT   parse_only          (default 900)
+#   LONG_SPRINT    smith_compile and compile_all_targets (default 3600 each)
+#   SMITH_BATCH    differential-execution batch size     (default 100)
 set -uo pipefail
 
 ROOT="${REDTEAM_ROOT:-$HOME/gleam}"
@@ -17,6 +18,7 @@ cd "$ROOT"
 
 SHORT="${SHORT_SPRINT:-900}"
 LONG="${LONG_SPRINT:-3600}"
+SMITH_BATCH="${SMITH_BATCH:-100}"
 
 # libFuzzer grows the FIRST corpus dir it is given; extra dirs are
 # read-only seed corpora. The default fuzz/corpus/<target> dir stays the
@@ -41,4 +43,7 @@ while true; do
   cargo +nightly fuzz run compile_all_targets -- \
     -max_total_time="$LONG" -timeout=25 || true
   redteam/ops/process-artifacts.sh compile_all_targets || true
+
+  echo "[fuzz-loop] $(date -u +%FT%TZ) differential execution batch (${SMITH_BATCH} programs)"
+  redteam/bin/smith-campaign.sh "" "$SMITH_BATCH" || true
 done

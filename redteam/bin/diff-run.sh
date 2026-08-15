@@ -42,7 +42,12 @@ mkdir -p "$WORK/src"
 cp "$INPUT" "$WORK/src/main.gleam"
 printf 'name = "redteam_case"\n' > "$WORK/gleam.toml"
 
-GLEAM=(cargo run -q -p gleam --manifest-path "$ROOT/Cargo.toml" --)
+GLEAM_BIN="${GLEAM_BIN:-}"
+if [ -n "$GLEAM_BIN" ]; then
+  GLEAM=("$GLEAM_BIN")
+else
+  GLEAM=(cargo run -q -p gleam --manifest-path "$ROOT/Cargo.toml" --)
+fi
 
 run_target() {
   # $1 = target, everything else = extra args for `gleam run`
