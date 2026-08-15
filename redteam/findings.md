@@ -339,3 +339,42 @@
   answer, no crash). Erlang-only-correct.
 - **Status**: CONFIRMED NEW, verified against the real CLI on both
   targets and both versions. Ready to report.
+
+## 2026-08-15 — F-13 — JavaScript: empty-string `:utf8` bit-array pattern segment emits malformed JS (SyntaxError)
+
+- **Found by**: differential execution (smith-campaign seeds 4 and 17,
+  the first batch after bit-array generation landed in gleam-smith).
+- **Minimal repro**:
+  ```gleam
+  pub fn main() {
+    echo case <<"ab":utf8>> {
+      <<"":utf8, "ab":utf8>> -> "a"
+      _ -> "b"
+    }
+  }
+  ```
+- **Observation**: Erlang prints `"a"`; JavaScript crashes with
+  `SyntaxError: Unexpected token '&&'`. A `:utf8` segment with an EMPTY
+  string literal (`""`) in a bit-array pattern makes the JS codegen emit
+  a dangling `&&` with no right operand.
+- **Root cause**: the empty-string `:utf8` segment contributes
+  `$.bitSize === 0` (a zero-length check) plus a stray `&& ` with no
+  following operand. Generated code:
+  ```js
+  if ($.bitSize === 16 &&  && <next segment check>) {   // SyntaxError
+  ```
+  The single-segment form `<<"":utf8>>` emits `if ($.bitSize === 0 && )`.
+- **Distinct from #6181** (F-12): that issue emits *valid* JS that
+  silently gives the wrong answer (wildcard `_:utf8` never matches);
+  this issue emits *invalid* JS that crashes. Both are in the bit-array
+  pattern codegen for the JS target.
+- **Version scope**: present on BOTH `v1.18.1` release and `main` —
+  long-standing, user-facing, not a regression (verified via
+  `redteam/bin/version-check.sh`).
+- **Tracker check** (2026-08-15): novel — zero hits for "empty string
+  utf8 pattern" / "SyntaxError bit array pattern". Related but distinct:
+  tracking issue #3842 (JS bit-array feature gaps).
+- **Classification**: `confirmed-new-bug` — JS malformed-codegen crash
+  (invalid JS at runtime).
+- **Status**: CONFIRMED NEW, filed upstream as
+  [gleam-lang/gleam#6182](https://github.com/gleam-lang/gleam/issues/6182).
