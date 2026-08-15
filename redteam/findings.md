@@ -45,14 +45,14 @@
 ### F-2 — `corpus/bit_arrays.gleam` — 16-bit float + utf8 + trailing bits pattern
 - **Observation**: `unpack(pack(5))` where the input is a 7-byte bit array
   built with a `:16-float` segment — the clause
-  `<<x:16, _:16-float, _:utf8, _:8, _:bits>>` matches on Erlang (returns 5)
-  but **falls through to the default clause on Node.js** (returns -1).
-- **Classification**: `candidate-new-bug` — JavaScript bit-array pattern
-  matching divergence. Consistent with the historical bug density in bit
-  array codegen (zero-width segments, 16-bit float rounding, -0.0 encoding,
-  unaligned reads).
-- **Status**: NEEDS ISOLATION (reduce to minimal segment combination:
-  16-float vs utf8 vs trailing `_:bits`, then check tracker for dupes).
+  `<<x:16, _:16-float, _:utf8, _:8, _:bits>>` was recorded as matching on
+  Erlang (returns 5) but falling through on Node.js (returns -1).
+- **Classification**: `runner-noise` (reclassified 2026-08-14). On careful
+  re-verification with clean builds, BOTH targets return -1 (correct:
+  `_:utf8` matches one codepoint, leaving the pattern misaligned). The
+  recorded Erlang `5` was a stale-build cache artifact. **However**, the
+  isolation work surfaced a real, distinct bug — see **F-12**.
+- **Status**: closed as runner-noise; led to F-12.
 
 ### F-3 — `corpus/reserved_words.gleam` — custom type named `Record`
 - **Observation**: Erlang codegen emits `-type record() :: ...`, which makes
@@ -299,3 +299,43 @@
   other non-binop tokens reaching the same reduction (e.g. check `&&`/`||`
   in consts and guard-only operators).
 - **Follow-up**: added to the known-bug registry so fuzz harnesses skip it.
+
+## 2026-08-14 — F-12 — JavaScript: wildcard `<<_:utf8>>` bit-array pattern never matches (silent miscompile)
+
+- **Found by**: isolation of F-2 (which turned out to be runner-noise).
+- **Minimal repro**:
+  ```gleam
+  pub fn main() {
+    echo case <<"a":utf8>> {
+      <<_:utf8>> -> 1
+      _ -> -1
+    }
+  }
+  ```
+- **Observation**: Erlang prints `1`; JavaScript prints `-1`. The wildcard
+  `_:utf8` segment in a bit-array pattern **fails to match on the
+  JavaScript target**, silently falling through. A literal string segment
+  (`<<"a":utf8>>`) matches correctly on both targets; a bound variable
+  (`<<a:utf8>>`) is rejected by the compiler on both targets ("utf8 in
+  patterns must be an exact string"). Only the wildcard/discard form is
+  accepted by the compiler AND miscompiled by JS codegen.
+- **Root cause**: JS codegen for `<<_:utf8>>` emits a check against the
+  WHOLE bit array's total size rather than reading/matching a variable-
+  length UTF-8 codepoint. Generated code:
+  ```js
+  let $ = toBitArray([stringBits("a")]);
+  if ($.bitSize === 64) { return 1; } else { return -1; }
+  ```
+  `"a"` is 8 bits; the `=== 64` check is always false. (The `64` appears
+  to be a wrong default size for a variable-length segment.)
+- **Tracker check** (2026-08-14): no existing issue. Related but distinct:
+  tracking issue #3842 lists `utf8_codepoint` pattern matching as
+  unimplemented — this is the string `:utf8` segment, not the codepoint
+  type, and literal string `:utf8` already works on JS, so this is a
+  codegen bug in the wildcard path, not a missing feature.
+- **Version scope**: present on BOTH `v1.18.1` release and `main`
+  @ `7e623aa83` — long-standing, user-facing, not a regression.
+- **Classification**: `confirmed-new-bug` — JS silent miscompile (wrong
+  answer, no crash). Erlang-only-correct.
+- **Status**: CONFIRMED NEW, verified against the real CLI on both
+  targets and both versions. Ready to report.
