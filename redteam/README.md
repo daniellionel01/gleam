@@ -82,6 +82,12 @@ redteam/
 │                                     exit-code mode (0 == divergence found).
 ├── bin/smith-campaign.sh           Differential campaign: batch-generate
 │                                     gleam-smith programs, diff-run each.
+├── bin/version-check.sh           Manual triage only (NOT in the fuzz loop):
+│                                     does a finding reproduce on the latest
+│                                     release tag, or is it main-only? Builds
+│                                     the release compiler in a throwaway git
+│                                     worktree (cached), runs the fixture,
+│                                     prints REPRODUCES / ABSENT.
 ├── smith/                          gleam-smith: deterministic type-directed
 │                                     program generator (wasm-smith style).
 │                                     cargo test -p gleam-smith validates
