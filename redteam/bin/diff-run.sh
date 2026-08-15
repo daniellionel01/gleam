@@ -10,12 +10,15 @@
 #   redteam/bin/diff-run.sh --interesting case.gleam  # exit 0 iff divergence found
 #
 # Notes:
-# - `gleam run` writes program output interleaved with build chatter, so
-#   we capture merged stdout+stderr and strip known renderer/CLI noise:
-#   ANSI colours, "Compiling ..." progress lines, and `echo` source-location
-#   lines ("src/main.gleam:N" formats differ per target). This means a
-#   program that *prints* such a line as data would be mis-compared —
-#   acceptable for now, documented in redteam/README.md.
+# - `echo` writes to stderr, merged with build progress and warnings. The
+#   normaliser strips progress, warning blocks (awk: `warning:`..blank),
+#   the per-target echo source-location line, and finally WHITELISTS only
+#   value-shaped lines. The whitelist is the robust backstop — Gleam emits
+#   many diagnostic prose forms (Hint:, multi-line messages, carets) that
+#   are fragile to blacklist; a value-shape whitelist keeps only what the
+#   program actually prints. This keeps target-specific warnings (e.g. the
+#   F-3 record() hygiene warning, Erlang-only) out of the differential
+#   signal — we compare program output, not compiler complaints.
 # - The --interesting mode is an "interestingness test" for test-case
 #   reducers (e.g. treereduce): exit 0 means "this input is a divergence,
 #   keep shrinking it".
@@ -51,21 +54,28 @@ fi
 
 run_target() {
   # $1 = target, everything else = extra args for `gleam run`
+  # `echo` writes to stderr, merged with build progress + warnings; the
+  # normaliser strips those. stdout is currently unused by `echo`.
   local target="$1"; shift
   (cd "$WORK" && "${GLEAM[@]}" run --target "$target" --module main "$@") \
     >"$WORK/$target.raw" 2>&1
   return $?
 }
 
-# Strip ANSI codes, CLI progress lines, and per-target `echo` location lines.
+# Normalise: strip ANSI, warning blocks (awk: warning:..blank), the echo
+# source-location line, then WHITELIST value-shaped lines only.
+# Value shapes: Int, String, Bool, List, Tuple, BitArray, constructor.
 normalise() {
   sed -E $'s/\\x1b\\[[0-9;]*m//g' "$1" \
-    | grep -vE '^[[:space:]]*(Resolving versions|Downloading packages|Compiling |Compiled |Running |Building packages)' \
-    | grep -vE '_gleam_artefacts' \
-    | grep -vE '^%' \
+    | awk '
+      /^warning:/ { in_warn=1; next }
+      in_warn && /^$/ { in_warn=0; next }
+      in_warn { next }
+      { print }
+    ' \
     | grep -vE 'main\.gleam:[0-9]+' \
-    | sed -E 's/[[:space:]]+$//' \
-    | grep -vE '^$'
+    | grep -E '^-?[0-9]+$|^".*"*$|^(True|False)$|^\[.*\]$|^#\(.*\)$|^<<.*>>$|^[A-Z][A-Za-z0-9_]*(\(.*\))?$' \
+    | sed -E 's/[[:space:]]+$//'
 }
 
 ERLANG_STATUS=0

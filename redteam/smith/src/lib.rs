@@ -38,6 +38,7 @@ enum Ty {
     ListInt,
     Tup(Box<Ty>, Box<Ty>),
     Custom(usize),
+    BitArray,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,16 @@ enum Expr {
         body: Box<Expr>,
         args: Vec<Expr>,
     },
+    BitsLit(Vec<BitSeg>),
+}
+
+/// A segment of a bit-array literal (`<<...>>`).
+#[derive(Debug, Clone)]
+enum BitSeg {
+    /// `<<value:width>>` — a fixed-width integer segment.
+    Int(u32, u8),
+    /// `<<"str":utf8>>` — a UTF-8 string segment.
+    Utf8(&'static str),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -138,6 +149,26 @@ enum Pattern {
         fields: Vec<Pattern>,
     },
     TupPat(Box<Pattern>, Box<Pattern>),
+    Bits(Vec<BitSegPat>),
+}
+
+/// A segment of a bit-array pattern. The wildcard utf8 form
+/// (`BitSegPat::Utf8Wild`) is the F-12 trigger (gleam-lang/gleam#6181):
+/// it matches on Erlang but silently never matches on JavaScript.
+#[derive(Debug, Clone)]
+enum BitSegPat {
+    /// `<<value:width>>` — literal integer segment.
+    IntLit(u32, u8),
+    /// `<<"str":utf8>>` — literal string segment (works on both targets).
+    Utf8Lit(&'static str),
+    /// `<<_:utf8>>` — wildcard utf8 segment (F-12: miscompiled on JS).
+    Utf8Wild,
+    /// `<<name:width>>` — binds an Int (width bits).
+    Var(String, u8),
+    /// `<<_:width>>` — fixed-width discard.
+    Discard(u8),
+    /// `<<_:bytes>>` — trailing bytes discard.
+    Bytes,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -178,6 +209,11 @@ const TYPE_POOL: &[&str] = &["Number", "Record", "Promise", "Object", "Symbol", 
 const CTOR_POOL: &[&str] = &["Ok", "Error", "Some", "None", "Number", "Record"];
 const LABEL_POOL: &[&str] = &["value", "inner", "data", "constructor", "field"];
 const STR_POOL: &[&str] = &["", "a", "ab", "abc", "b", "bc", "x", "data", "res", "constructor"];
+/// Single-character strings — used for single-segment utf8 bit-array
+/// subjects so that `<<_:utf8>>` patterns can match exactly (one codepoint,
+/// no leftover bits). The F-12 divergence only manifests when the subject
+/// is exactly one UTF-8 codepoint.
+const STR_1CHAR: &[&str] = &["a", "b", "x"];
 const INT_POOL: &[i64] = &[0, 1, 2, 3, 4, 5, 7, 10, 42, 100];
 
 // ---------------------------------------------------------------------------
@@ -454,6 +490,11 @@ fn gen_any_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
 // Expression generation
 
 fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: u8) -> Result<Expr> {
+    // BitArray only ever appears as a case subject (never echoed, never a
+    // fn param/return), so a literal is the only sensible producer.
+    if matches!(ty, Ty::BitArray) {
+        return gen_base(u, ctx, env, ty);
+    }
     // Find variables in scope of the required type.
     let vars_of_ty: Vec<&String> = env
         .iter()
@@ -575,6 +616,7 @@ fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty) -> Resu
         Ty::Int => Expr::IntLit(*pick(u, INT_POOL)?),
         Ty::Str => Expr::StrLit(*pick(u, STR_POOL)?),
         Ty::Bool => Expr::BoolLit(chance(u, 50)?),
+        Ty::BitArray => gen_bit_array(u)?,
         Ty::ListInt => {
             let n = u.int_in_range(0..=2)?;
             let mut elems = Vec::new();
@@ -599,6 +641,97 @@ fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty) -> Resu
             }
         }
     })
+}
+
+/// Byte-aligned widths for bit-array segments, biased toward 8 (so most
+/// generated bit arrays are clean byte sequences that patterns can slice).
+const SEG_WIDTHS: &[u8] = &[8, 8, 8, 16, 16, 4, 1];
+
+/// Generate a bit-array literal (`<<...>>`). Biased toward single utf8
+/// segments so that single-segment `<<_:utf8>>` / `<<"s":utf8>>` patterns
+/// can exactly match (the F-12 divergence only manifests when the
+/// subject is exactly one UTF-8 codepoint — a multi-segment subject has
+/// leftover bits and the pattern legitimately fails on BOTH targets).
+fn gen_bit_array(u: &mut Unstructured<'_>) -> Result<Expr> {
+    let n = match roll(u, &[(40, 1), (30, 2), (30, 3)])? {
+        1 => 1,
+        2 => 2,
+        _ => 3,
+    };
+    let mut segs = Vec::new();
+    for _ in 0..n {
+        let seg = if chance(u, 55)? {
+            // Single-segment utf8 subjects use 1-char strings so that
+            // `<<_:utf8>>` patterns can exactly match (one codepoint).
+            let s = if n == 1 { *pick(u, STR_1CHAR)? } else { *pick(u, STR_POOL)? };
+            BitSeg::Utf8(s)
+        } else {
+            let val = *pick(u, INT_POOL)? as u32;
+            let width = *pick(u, SEG_WIDTHS)?;
+            BitSeg::Int(val, width)
+        };
+        segs.push(seg);
+    }
+    Ok(Expr::BitsLit(segs))
+}
+
+/// Generate a bit-array pattern. The last clause is a catch-all `_` to
+/// guarantee exhaustiveness (the `covers()` backstop would append one
+/// anyway, but emitting it directly produces the F-12 shape
+/// `<<_:utf8>> -> 1; _ -> -1`). Non-last clauses use `Pattern::Bits(...)`
+/// with a mix of literal, wildcard, and (at most one) binding segment.
+fn gen_bit_pattern(
+    u: &mut Unstructured<'_>,
+    bound: &mut Vec<(String, Ty)>,
+    is_last: bool,
+) -> Result<Pattern> {
+    if is_last && chance(u, 70)? {
+        return Ok(Pattern::Discard);
+    }
+    let n = match roll(u, &[(45, 1), (35, 2), (20, 3)])? {
+        1 => 1,
+        2 => 2,
+        _ => 3,
+    };
+    let mut segs: Vec<BitSegPat> = Vec::new();
+    let mut bound_one = false;
+    for i in 0..n {
+        let is_last_seg = i == n - 1;
+        // `:bytes` / `:bits` segments must be last; only allow Bytes there.
+        let bytes_ok = is_last_seg;
+        // Single-segment patterns are biased toward the utf8 forms that
+        // exercise the F-12 codepath (wildcard vs literal string).
+        let seg = if n == 1 {
+            match roll(u, &[(30, 0), (25, 1), (35, 2), (10, 4)])? {
+                0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
+                1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
+                2 => BitSegPat::Utf8Wild,         // F-12 trigger
+                _ => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
+            }
+        } else {
+            match roll(u, &[(25, 0), (20, 1), (20, 2), (15, 3), (15, 4), (5, 5)])? {
+                0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
+                1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
+                2 => BitSegPat::Utf8Wild,         // F-12 trigger
+                3 if !bound_one => {
+                    bound_one = true;
+                    let name = pick(u, VAR_POOL)?.to_string();
+                    let width = *pick(u, SEG_WIDTHS)?;
+                    if !bound.iter().any(|(n, _)| *n == name) {
+                        bound.push((name.clone(), Ty::Int));
+                        BitSegPat::Var(name, width)
+                    } else {
+                        BitSegPat::Discard(width)
+                    }
+                }
+                4 => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
+                _ if bytes_ok => BitSegPat::Bytes,
+                _ => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
+            }
+        };
+        segs.push(seg);
+    }
+    Ok(Pattern::Bits(segs))
 }
 
 fn gen_binop(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: u8) -> Result<Expr> {
@@ -719,7 +852,9 @@ fn gen_case_expr(
         // F-7/F-8/F-9 suppression: NO alternatives on list subjects — the
         // Erlang decision-tree compiler loses variable registrations for
         // alternative list patterns following other list clauses.
-        let alts_allowed = subj_count == 1 && !matches!(subj_tys[0], Ty::ListInt);
+        let alts_allowed = subj_count == 1
+            && !matches!(subj_tys[0], Ty::ListInt)
+            && !matches!(subj_tys[0], Ty::BitArray);
         let wants_alts = alts_allowed && chance(u, 25)?;
         let bind_spec = if alts_allowed && chance(u, 30)? {
             let name = pick(u, &["a", "b", "inner", "item", "constructor"][..])?.to_string();
@@ -894,7 +1029,7 @@ fn covers(ctx: &Ctx, subj_tys: &[Ty], clauses: &[Clause]) -> bool {
 }
 
 fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
-    let mut weights: Vec<(u32, usize)> = vec![(25, 0), (30, 1), (15, 2), (15, 3), (5, 4)];
+    let mut weights: Vec<(u32, usize)> = vec![(25, 0), (30, 1), (15, 2), (15, 3), (5, 4), (10, 6)];
     if !types.is_empty() {
         weights.push((20, 5));
     }
@@ -907,6 +1042,7 @@ fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result
             Box::new(gen_simple_ty(u, types)?),
             Box::new(gen_simple_ty(u, types)?),
         ),
+        6 => Ty::BitArray,
         _ => Ty::Custom(u.int_in_range(0..=types.len() - 1)?),
     })
 }
@@ -1040,6 +1176,7 @@ fn gen_pattern(
                 _ => Pattern::Discard,
             }
         }
+        Ty::BitArray => gen_bit_pattern(u, bound, is_last)?,
     };
 
     // Alias patterns (whole-pattern binding) — only when the pattern isn't
@@ -1185,6 +1322,10 @@ fn gen_alt_pattern(
                 fields: ctor.fields.iter().map(|_| Pattern::Discard).collect(),
             }
         }
+        // BitArray alternatives are excluded (alts_allowed is false for
+        // BitArray subjects — they'd re-trigger #5991's decision-tree bug,
+        // same as List/Str alternatives). Dead arm for exhaustiveness.
+        Ty::BitArray => Pattern::Discard,
     })
 }
 
@@ -1444,6 +1585,7 @@ fn ty_str(ty: &Ty, types: &[CustomType]) -> String {
         Ty::ListInt => "List(Int)".to_string(),
         Ty::Tup(a, b) => format!("#({}, {})", ty_str(a, types), ty_str(b, types)),
         Ty::Custom(k) => types[*k].name.clone(),
+        Ty::BitArray => "BitArray".to_string(),
     }
 }
 
@@ -1607,6 +1749,27 @@ fn write_expr(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
             }
             out.push(')');
         }
+        Expr::BitsLit(segs) => {
+            out.push_str("<<");
+            for (i, s) in segs.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                match s {
+                    BitSeg::Int(val, width) => {
+                        out.push_str(&val.to_string());
+                        out.push(':');
+                        out.push_str(&width.to_string());
+                    }
+                    BitSeg::Utf8(s) => {
+                        out.push('"');
+                        out.push_str(s);
+                        out.push_str("\":utf8");
+                    }
+                }
+            }
+            out.push_str(">>");
+        }
     }
 }
 
@@ -1693,6 +1856,39 @@ fn write_pattern(out: &mut String, p: &Pattern, types: &[CustomType]) {
             out.push_str(", ");
             write_pattern(out, b, types);
             out.push(')');
+        }
+        Pattern::Bits(segs) => {
+            out.push_str("<<");
+            for (i, s) in segs.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                match s {
+                    BitSegPat::IntLit(val, width) => {
+                        out.push_str(&val.to_string());
+                        out.push(':');
+                        out.push_str(&width.to_string());
+                    }
+                    BitSegPat::Utf8Lit(s) => {
+                        out.push('"');
+                        out.push_str(s);
+                        out.push_str("\":utf8");
+                    }
+                    BitSegPat::Utf8Wild => out.push_str("_:utf8"),
+                    BitSegPat::Var(name, width) => {
+                        out.push_str(name);
+                        out.push(':');
+                        out.push_str(&width.to_string());
+                    }
+                    BitSegPat::Discard(width) => {
+                        out.push('_');
+                        out.push(':');
+                        out.push_str(&width.to_string());
+                    }
+                    BitSegPat::Bytes => out.push_str("_:bytes"),
+                }
+            }
+            out.push_str(">>");
         }
     }
 }
