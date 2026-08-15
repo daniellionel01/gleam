@@ -96,6 +96,19 @@
   inliner-only (`probe-artifact`). gleam-smith suppressions now: no
   alternatives on list subjects (F-7..F-9), no guards on alternative
   clauses (F-7/F-11), no aliases on alternative clauses (F-8).
+- **Regression source (bisected 2026-08-14)**: introduced by commit
+  `f366e99a` — "omit unreachable case clauses in Erlang codegen",
+  PR [gleam-lang/gleam#5991](https://github.com/gleam-lang/gleam/pull/5991)
+  by `jackprogramsjp`, merged 2026-08-01. Verified by clean `git bisect`
+  between `v1.18.1` (good) and `7e623aa83` (bad): parent `2850adecd`
+  compiles all four; `f366e99a` panics on all four; `v1.18.0` also good
+  (sole introducer, no older instance). Root cause: the PR feeds
+  `compiled_case.unreachable` (from `exhaustiveness.rs`) into Erlang
+  codegen and **skips** any clause/alternative flagged unreachable. When
+  a skipped pattern is the one that binds a variable the guard/body
+  uses, that variable is never registered → `erlang.rs:512` panics
+  "variable not in scope". JavaScript codegen does not skip on
+  `unreachable`, so JS compiles fine (Erlang-only).
 - **Status**: `confirmed-new-bug` — VERIFIED against the real CLI
   (2026-08-14): `gleam build --target erlang` aborts with
   `error: Fatal compiler bug! … variable not in scope`.
