@@ -164,6 +164,17 @@ enum Pattern {
     Bits(Vec<BitSegPat>),
 }
 
+/// Options for integer bit-array segments in PATTERNS. These options
+/// (:big/:little, :signed/:unsigned) are only valid in pattern position
+/// and cannot appear on value segments. They exercise the codegen paths
+/// for byte-order and sign-extension handling.
+#[derive(Debug, Clone)]
+struct IntOpt {
+    width: u8,
+    big: bool,
+    signed: bool,
+}
+
 /// A segment of a bit-array pattern. The wildcard utf8 form
 /// (`BitSegPat::Utf8Wild`) is the F-12 trigger (gleam-lang/gleam#6181):
 /// it matches on Erlang but silently never matches on JavaScript.
@@ -177,6 +188,10 @@ enum BitSegPat {
     Utf8Wild,
     /// `<<name:width>>` — binds an Int (width bits).
     Var(String, u8),
+    /// `<<name:big-signed-8>>` — binds with endianness/signedness.
+    VarInt(String, IntOpt),
+    /// `<<_:big-signed-8>>` — discard with endianness/signedness.
+    DiscardInt(IntOpt),
     /// `<<_:width>>` — fixed-width discard.
     Discard(u8),
     /// `<<_:bytes>>` — trailing bytes discard.
@@ -721,6 +736,28 @@ fn gen_bit_array(u: &mut Unstructured<'_>) -> Result<Expr> {
 /// anyway, but emitting it directly produces the F-12 shape
 /// `<<_:utf8>> -> 1; _ -> -1`). Non-last clauses use `Pattern::Bits(...)`
 /// with a mix of literal, wildcard, and (at most one) binding segment.
+/// Generate a variable-binding integer segment with endianness/signedness
+/// options, or fall back to simple DiscardInt if binding can't be used.
+fn gen_var_int_seg(
+    u: &mut Unstructured<'_>,
+    bound: &mut Vec<(String, Ty)>,
+    bound_one: &mut bool,
+) -> Result<BitSegPat> {
+    *bound_one = true;
+    let name = pick(u, VAR_POOL)?.to_string();
+    let opt = IntOpt {
+        width: *pick(u, SEG_WIDTHS)?,
+        big: chance(u, 50)?,
+        signed: chance(u, 30)?,
+    };
+    if !bound.iter().any(|(n, _)| *n == name) {
+        bound.push((name.clone(), Ty::Int));
+        Ok(BitSegPat::VarInt(name, opt))
+    } else {
+        Ok(BitSegPat::DiscardInt(opt))
+    }
+}
+
 fn gen_bit_pattern(
     u: &mut Unstructured<'_>,
     bound: &mut Vec<(String, Ty)>,
@@ -750,7 +787,7 @@ fn gen_bit_pattern(
                 _ => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
             }
         } else {
-            match roll(u, &[(25, 0), (20, 1), (20, 2), (15, 3), (15, 4), (5, 5)])? {
+            match roll(u, &[(22, 0), (18, 1), (18, 2), (12, 3), (12, 4), (3, 5), (5, 6), (5, 7), (5, 8)])? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
                 1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
                 2 => BitSegPat::Utf8Wild,         // F-12 trigger
@@ -766,8 +803,14 @@ fn gen_bit_pattern(
                     }
                 }
                 4 => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
-                _ if bytes_ok => BitSegPat::Bytes,
-                _ => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
+                5 if bytes_ok => BitSegPat::Bytes,
+                // Endianness/signedness exercise additional codegen paths.
+                6 if !bound_one => gen_var_int_seg(u, bound, &mut bound_one)?,
+                _ => BitSegPat::DiscardInt(IntOpt {
+                    width: *pick(u, SEG_WIDTHS)?,
+                    big: chance(u, 50)?,
+                    signed: chance(u, 30)?,
+                }),
             }
         };
         segs.push(seg);
@@ -2014,10 +2057,20 @@ fn write_pattern(out: &mut String, p: &Pattern, types: &[CustomType]) {
                         out.push(':');
                         out.push_str(&width.to_string());
                     }
+                    BitSegPat::VarInt(name, opt) => {
+                        out.push_str(name);
+                        out.push(':');
+                        out.push_str(&fmt_int_opt(opt));
+                    }
                     BitSegPat::Discard(width) => {
                         out.push('_');
                         out.push(':');
                         out.push_str(&width.to_string());
+                    }
+                    BitSegPat::DiscardInt(opt) => {
+                        out.push('_');
+                        out.push(':');
+                        out.push_str(&fmt_int_opt(opt));
                     }
                     BitSegPat::Bytes => out.push_str("_:bytes"),
                 }
@@ -2046,6 +2099,12 @@ fn write_guard(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
         }
         _ => write_expr(out, e, types, ind),
     }
+}
+
+fn fmt_int_opt(opt: &IntOpt) -> String {
+    let endian = if opt.big { "big" } else { "little" };
+    let sign = if opt.signed { "signed" } else { "unsigned" };
+    format!("{}-{}-{}", endian, sign, opt.width)
 }
 
 fn push_indent(out: &mut String, ind: usize) {
