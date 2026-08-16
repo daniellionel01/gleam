@@ -33,6 +33,7 @@ use arbitrary::{Arbitrary, Result, Unstructured};
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Ty {
     Int,
+    Float,
     Str,
     Bool,
     ListInt,
@@ -66,6 +67,7 @@ struct FnSig {
 #[derive(Debug, Clone)]
 enum Expr {
     IntLit(i64),
+    FloatLit(f64),
     StrLit(&'static str),
     BoolLit(bool),
     Var(String),
@@ -120,6 +122,15 @@ enum BinOp {
     And,
     Or,
     Concat,
+    /// Float arithmetic (`+. -. *. /.`) and comparison (`>. >=. <. <=.`).
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FGt,
+    FGe,
+    FLt,
+    FLe,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +147,7 @@ enum Pattern {
     Var(String),
     Alias(Box<Pattern>, String),
     IntLit(u32),
+    FloatLit(f64),
     StrLit(&'static str),
     BoolLit(bool),
     Prefix(&'static str, Option<String>),
@@ -187,6 +199,7 @@ enum Stmt {
 #[derive(Debug, Clone)]
 pub struct Module {
     types: Vec<CustomType>,
+    constants: Vec<(String, Ty, Expr)>,
     helper: Option<&'static str>,
     functions: Vec<(FnSig, Expr)>,
     main: Vec<Stmt>,
@@ -215,6 +228,10 @@ const STR_POOL: &[&str] = &["", "a", "ab", "abc", "b", "bc", "x", "data", "res",
 /// is exactly one UTF-8 codepoint.
 const STR_1CHAR: &[&str] = &["a", "b", "x"];
 const INT_POOL: &[i64] = &[0, 1, 2, 3, 4, 5, 7, 10, 42, 100];
+/// Float literals — whole values (0.0, 1.0, …) expose the cross-target
+/// echo-formatting divergence (Erlang prints `1.0`, JS prints `1`);
+/// fractional values (0.1, 1.5, …) exercise IEEE-754 arithmetic edges.
+const FLOAT_POOL: &[f64] = &[0.0, 1.0, 2.0, 0.5, 1.5, 3.14, 100.0, 0.1, 0.25, 10.0];
 
 // ---------------------------------------------------------------------------
 // Generation context
@@ -418,7 +435,7 @@ impl<'a> Arbitrary<'a> for Module {
                 let pty = gen_any_ty(u, &ctx.types)?;
                 params.push((pname, pty));
             }
-            let ret = pick(u, &[Ty::Int, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
+            let ret = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
             let sig = FnSig {
                 name: name.clone(),
                 params: params.clone(),
@@ -429,12 +446,33 @@ impl<'a> Arbitrary<'a> for Module {
             functions.push((sig, body));
         }
 
+        // -- constants -------------------------------------------------------
+        let const_count = u.int_in_range(0..=3)?;
+        let mut constants: Vec<(String, Ty, Expr)> = Vec::new();
+        let mut used_const_names: Vec<String> = Vec::new();
+        for _ in 0..const_count {
+            let cty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool])?.clone();
+            let cname = loop {
+                let cand = pick(u, &["k_limit", "k_seed", "k_tag", "k_pi", "k_e", "k_golden"])?.to_string();
+                if !used_const_names.contains(&cand) {
+                    used_const_names.push(cand.clone());
+                    break cand;
+                }
+            };
+            let empty: Env = Vec::new();
+            let cval = gen_base(u, &mut ctx, &empty, &cty)?;
+            constants.push((cname, cty, cval));
+        }
+
         // -- main -------------------------------------------------------------
         let mut main: Vec<Stmt> = Vec::new();
         let mut env: Env = Vec::new();
+        for (name, ty, _) in &constants {
+            env.push((name.clone(), ty.clone()));
+        }
         let let_count = u.int_in_range(0..=2)?;
         for _ in 0..let_count {
-            let ty = pick(u, &[Ty::Int, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
+            let ty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
             let expr = gen_expr(u, &mut ctx, &env, &ty, 2)?;
             // Shadowing bias: sometimes reuse a name already bound in main.
             let name = if chance(u, 30)? {
@@ -450,13 +488,14 @@ impl<'a> Arbitrary<'a> for Module {
         }
         let echo_count = u.int_in_range(1..=4)?;
         for _ in 0..echo_count {
-            let ty = pick(u, &[Ty::Int, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
+            let ty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
             let expr = gen_expr(u, &mut ctx, &env, &ty, 3)?;
             main.push(Stmt::Echo(expr));
         }
 
         Ok(Module {
             types: ctx.types.clone(),
+            constants,
             helper,
             functions,
             main,
@@ -465,20 +504,21 @@ impl<'a> Arbitrary<'a> for Module {
 }
 
 fn gen_simple_ty(u: &mut Unstructured<'_>, _types: &[CustomType]) -> Result<Ty> {
-    Ok(pick(u, &[Ty::Int, Ty::Str, Ty::Bool, Ty::ListInt])?.clone())
+    Ok(pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone())
 }
 
 fn gen_any_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
-    let mut weights: Vec<(u32, usize)> = vec![(30, 0), (20, 1), (25, 2), (15, 3), (10, 4)];
+    let mut weights: Vec<(u32, usize)> = vec![(25, 0), (10, 1), (15, 2), (20, 3), (12, 4), (10, 7)];
     if !types.is_empty() {
         weights.push((15, 5));
     }
     Ok(match roll(u, &weights)? {
         0 => Ty::Int,
-        1 => Ty::Str,
-        2 => Ty::Bool,
-        3 => Ty::ListInt,
-        4 => Ty::Tup(
+        1 => Ty::Float,
+        2 => Ty::Str,
+        3 => Ty::Bool,
+        4 => Ty::ListInt,
+        7 => Ty::Tup(
             Box::new(gen_simple_ty(u, types)?),
             Box::new(gen_simple_ty(u, types)?),
         ),
@@ -509,9 +549,9 @@ fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: 
     }
 
     let can_call = ctx.fns.iter().any(|f| f.ret == *ty);
-    let can_pipe = can_call && matches!(ty, Ty::Int | Ty::Str | Ty::Bool | Ty::ListInt);
+    let can_pipe = can_call && matches!(ty, Ty::Int | Ty::Float | Ty::Str | Ty::Bool | Ty::ListInt);
     let mut weights: Vec<(u32, usize)> = vec![(30, 0)]; // base
-    if matches!(ty, Ty::Int | Ty::Str | Ty::Bool) {
+    if matches!(ty, Ty::Int | Ty::Float | Ty::Str | Ty::Bool) {
         weights.push((20, 1)); // binop
     }
     if depth >= 2 {
@@ -541,7 +581,7 @@ fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: 
             let mut block_env = env.clone();
             let mut stmts: Vec<(String, Expr)> = Vec::new();
             for _ in 0..stmt_count {
-                let lty = pick(u, &[Ty::Int, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
+                let lty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
                 let bound = gen_expr(u, ctx, &block_env, &lty, depth - 1)?;
                 // Shadowing bias: reuse an in-scope name sometimes.
                 let name = if chance(u, 25)? {
@@ -595,7 +635,7 @@ fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: 
             let mut params: Vec<String> = Vec::new();
             let mut args: Vec<Expr> = Vec::new();
             for _ in 0..param_count {
-                let pty = pick(u, &[Ty::Int, Ty::Str, Ty::Bool])?.clone();
+                let pty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool])?.clone();
                 let pname = ctx.fresh();
                 env_push(&mut anon_env, pname.clone(), pty.clone());
                 params.push(pname);
@@ -614,6 +654,7 @@ fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: 
 fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty) -> Result<Expr> {
     Ok(match ty {
         Ty::Int => Expr::IntLit(*pick(u, INT_POOL)?),
+        Ty::Float => Expr::FloatLit(*pick(u, FLOAT_POOL)?),
         Ty::Str => Expr::StrLit(*pick(u, STR_POOL)?),
         Ty::Bool => Expr::BoolLit(chance(u, 50)?),
         Ty::BitArray => gen_bit_array(u)?,
@@ -764,7 +805,7 @@ fn gen_binop(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth:
             Box::new(gen_expr(u, ctx, env, &Ty::Str, depth - 1)?),
             Box::new(gen_expr(u, ctx, env, &Ty::Str, depth - 1)?),
         ),
-        Ty::Bool => match roll(u, &[(35, 0), (25, 1), (25, 2), (15, 3)])? {
+        Ty::Bool => match roll(u, &[(25, 0), (15, 1), (20, 2), (10, 3), (15, 4), (15, 5)])? {
             0 => {
                 // comparison of ints
                 let op = *pick(
@@ -793,7 +834,48 @@ fn gen_binop(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth:
                     Box::new(gen_expr(u, ctx, env, &Ty::Bool, depth - 1)?),
                 )
             }
-            _ => Expr::NegBool(Box::new(gen_expr(u, ctx, env, &Ty::Bool, depth - 1)?)),
+            3 => Expr::NegBool(Box::new(gen_expr(u, ctx, env, &Ty::Bool, depth - 1)?)),
+            4 => {
+                let op = *pick(u, &[BinOp::FGt, BinOp::FGe, BinOp::FLt, BinOp::FLe])?;
+                Expr::Bin(
+                    op,
+                    Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                    Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                )
+            }
+            _ => {
+                let op = *pick(u, &[BinOp::Eq, BinOp::Ne])?;
+                Expr::Bin(
+                    op,
+                    Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                    Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                )
+            }
+        },
+        Ty::Float => match roll(u, &[(30, 0), (30, 1), (24, 2), (16, 3)])? {
+            0 => Expr::Bin(
+                BinOp::FAdd,
+                Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+            ),
+            1 => Expr::Bin(
+                BinOp::FSub,
+                Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+            ),
+            2 => Expr::Bin(
+                BinOp::FMul,
+                Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+            ),
+            _ => {
+                let divisor = Expr::FloatLit(*pick(u, &[1.0, 0.5, 2.0, 10.0, 3.14][..])?);
+                Expr::Bin(
+                    BinOp::FDiv,
+                    Box::new(gen_expr(u, ctx, env, &Ty::Float, depth - 1)?),
+                    Box::new(divisor),
+                )
+            }
         },
         _ => gen_base(u, ctx, env, ty)?,
     })
@@ -858,7 +940,7 @@ fn gen_case_expr(
         let wants_alts = alts_allowed && chance(u, 25)?;
         let bind_spec = if alts_allowed && chance(u, 30)? {
             let name = pick(u, &["a", "b", "inner", "item", "constructor"][..])?.to_string();
-            let bty = pick(u, &[Ty::Int, Ty::Str, Ty::Bool])?.clone();
+            let bty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool])?.clone();
             BindSpec::One(name, bty)
         } else {
             BindSpec::Free
@@ -1029,7 +1111,7 @@ fn covers(ctx: &Ctx, subj_tys: &[Ty], clauses: &[Clause]) -> bool {
 }
 
 fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
-    let mut weights: Vec<(u32, usize)> = vec![(25, 0), (30, 1), (15, 2), (15, 3), (5, 4), (10, 6)];
+    let mut weights: Vec<(u32, usize)> = vec![(20, 0), (25, 1), (10, 2), (12, 3), (5, 4), (8, 6), (10, 7)];
     if !types.is_empty() {
         weights.push((20, 5));
     }
@@ -1043,6 +1125,7 @@ fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result
             Box::new(gen_simple_ty(u, types)?),
         ),
         6 => Ty::BitArray,
+        7 => Ty::Float,
         _ => Ty::Custom(u.int_in_range(0..=types.len() - 1)?),
     })
 }
@@ -1098,6 +1181,11 @@ fn gen_pattern(
                 used_ints.push(lit);
                 Pattern::IntLit(lit)
             }
+            1 => binder(u, bound, ctx, ty)?,
+            _ => Pattern::Discard,
+        },
+        Ty::Float => match roll(u, &[(50, 0), (20, 1), (30, 2)])? {
+            0 => Pattern::FloatLit(*pick(u, FLOAT_POOL)?),
             1 => binder(u, bound, ctx, ty)?,
             _ => Pattern::Discard,
         },
@@ -1290,6 +1378,7 @@ fn gen_alt_pattern(
             used_ints.push(lit);
             Pattern::IntLit(lit)
         }
+        Ty::Float => Pattern::FloatLit(*pick(u, FLOAT_POOL)?),
         Ty::Str => {
             if chance(u, 50)? {
                 let lit = fresh_str_lit(u, used_strs)?;
@@ -1415,7 +1504,7 @@ fn fresh_str_lit(u: &mut Unstructured<'_>, used: &[&'static str]) -> Result<&'st
 fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) -> Result<Expr> {
     let usable: Vec<&(String, Ty)> = bound
         .iter()
-        .filter(|(_, t)| matches!(t, Ty::Int | Ty::Str | Ty::Bool))
+        .filter(|(_, t)| matches!(t, Ty::Int | Ty::Str | Ty::Bool | Ty::Float))
         .collect();
     let atom = |u: &mut Unstructured<'_>, _ctx: &mut Ctx| -> Result<Expr> {
         let (name, ty) = pick(u, &usable)?;
@@ -1442,6 +1531,11 @@ fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) ->
                 let op = *pick(u, &[BinOp::Eq, BinOp::Ne])?;
                 Expr::Bin(op, Box::new(Expr::Var(name.clone())), Box::new(Expr::StrLit(lit)))
             }
+            Ty::Float => {
+                let lit = *pick(u, FLOAT_POOL)?;
+                let op = *pick(u, &[BinOp::FGt, BinOp::FGe, BinOp::FLt, BinOp::FLe])?;
+                Expr::Bin(op, Box::new(Expr::Var(name.clone())), Box::new(Expr::FloatLit(lit)))
+            }
             _ => {
                 if chance(u, 50)? {
                     Expr::Var(name.clone())
@@ -1467,6 +1561,19 @@ fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) ->
 impl Module {
     pub fn to_source(&self) -> String {
         let mut out = String::new();
+        for (name, ty, val) in &self.constants {
+            out.push_str("pub const ");
+            out.push_str(name);
+            out.push_str(": ");
+            out.push_str(&ty_str(ty, &self.types));
+            out.push_str(" = ");
+            // Constant values are always atomic (literals, tuples of literals).
+            write_expr(&mut out, val, &self.types, 0);
+            out.push('\n');
+        }
+        if !self.constants.is_empty() {
+            out.push('\n');
+        }
         for t in &self.types {
             out.push_str("pub type ");
             out.push_str(&t.name);
@@ -1563,6 +1670,7 @@ impl Module {
         // Unreachable in practice; a valid fallback module.
         Module {
             types: Vec::new(),
+            constants: Vec::new(),
             helper: None,
             functions: vec![(
                 FnSig {
@@ -1580,6 +1688,7 @@ impl Module {
 fn ty_str(ty: &Ty, types: &[CustomType]) -> String {
     match ty {
         Ty::Int => "Int".to_string(),
+        Ty::Float => "Float".to_string(),
         Ty::Str => "String".to_string(),
         Ty::Bool => "Bool".to_string(),
         Ty::ListInt => "List(Int)".to_string(),
@@ -1604,6 +1713,14 @@ fn binop_str(op: BinOp) -> &'static str {
         BinOp::And => "&&",
         BinOp::Or => "||",
         BinOp::Concat => "<>",
+        BinOp::FAdd => "+.",
+        BinOp::FSub => "-.",
+        BinOp::FMul => "*.",
+        BinOp::FDiv => "/.",
+        BinOp::FGt => ">.",
+        BinOp::FGe => ">=.",
+        BinOp::FLt => "<.",
+        BinOp::FLe => "<=.",
     }
 }
 
@@ -1638,6 +1755,15 @@ fn write_operand(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
 fn write_expr(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
     match e {
         Expr::IntLit(n) => out.push_str(&n.to_string()),
+        Expr::FloatLit(f) => {
+            // Gleam requires float literals to have a decimal point.
+            let s = format!("{}", f);
+            if s.contains('.') || s.contains('e') {
+                out.push_str(&s);
+            } else {
+                out.push_str(&format!("{}.0", s));
+            }
+        }
         Expr::StrLit(s) => {
             out.push('"');
             out.push_str(s);
@@ -1803,6 +1929,14 @@ fn write_pattern(out: &mut String, p: &Pattern, types: &[CustomType]) {
             out.push_str(name);
         }
         Pattern::IntLit(n) => out.push_str(&n.to_string()),
+        Pattern::FloatLit(f) => {
+            let s = format!("{}", f);
+            if s.contains('.') || s.contains('e') {
+                out.push_str(&s);
+            } else {
+                out.push_str(&format!("{}.0", s));
+            }
+        }
         Pattern::StrLit(s) => {
             out.push('"');
             out.push_str(s);
