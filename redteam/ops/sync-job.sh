@@ -21,8 +21,8 @@ git fetch origin
 git checkout red-team
 git reset --hard origin/red-team
 
-echo "[sync] rebuilding fuzz targets"
-if ! cargo +nightly fuzz build; then
+echo "[sync] rebuilding fuzz targets (release profile: speed + debug checks)"
+if ! cargo +nightly fuzz build --release; then
   echo "[sync] BUILD FAILED — leaving fuzz loop on previous build"
   exit 1
 fi

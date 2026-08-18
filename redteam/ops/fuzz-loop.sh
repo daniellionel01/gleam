@@ -29,18 +29,18 @@ echo "[fuzz-loop] starting. root=$ROOT short=${SHORT}s long=${LONG}s"
 
 while true; do
   echo "[fuzz-loop] $(date -u +%FT%TZ) parse_only sprint (${SHORT}s)"
-  cargo +nightly fuzz run parse_only -- \
+  cargo +nightly fuzz run --release parse_only -- \
     -max_total_time="$SHORT" -timeout=10 || true
   redteam/ops/process-artifacts.sh parse_only || true
 
   echo "[fuzz-loop] $(date -u +%FT%TZ) smith_compile sprint (${LONG}s)"
-  cargo +nightly fuzz run smith_compile \
+  cargo +nightly fuzz run --release smith_compile \
     fuzz/corpus/smith_compile redteam/fuzz-seeds/smith_compile -- \
     -max_total_time="$LONG" -timeout=25 || true
   redteam/ops/process-artifacts.sh smith_compile || true
 
   echo "[fuzz-loop] $(date -u +%FT%TZ) compile_all_targets sprint (${LONG}s)"
-  cargo +nightly fuzz run compile_all_targets -- \
+  cargo +nightly fuzz run --release compile_all_targets -- \
     -max_total_time="$LONG" -timeout=25 || true
   redteam/ops/process-artifacts.sh compile_all_targets || true
 

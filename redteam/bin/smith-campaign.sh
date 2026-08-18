@@ -34,10 +34,10 @@ START="${START:-0}"
 # normally finishes in a few seconds.
 PROG_TIMEOUT="${PROG_TIMEOUT:-30}"
 
-echo "[smith-campaign] building generator + compiler..."
-cargo build -q --manifest-path "$ROOT/Cargo.toml" -p gleam-smith -p gleam
-export GLEAM_BIN="$ROOT/target/debug/gleam"
-SMITH="$ROOT/target/debug/gleam-smith"
+echo "[smith-campaign] building generator + compiler (release)..."
+cargo build -q --release --manifest-path "$ROOT/Cargo.toml" -p gleam-smith -p gleam
+export GLEAM_BIN="$ROOT/target/release/gleam"
+SMITH="$ROOT/target/release/gleam-smith"
 
 echo "[smith-campaign] seeds $START..$((START + COUNT - 1)) -> $OUT"
 found=0
