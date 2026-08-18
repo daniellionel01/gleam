@@ -1,34 +1,8 @@
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-FileCopyrightText: 2026 The Gleam contributors
-
-//! gleam-smith: a deterministic, type-directed generator of well-typed
-//! Gleam programs, in the tradition of Csmith and wasm-smith.
-//!
-//! Design contract (copied from wasm-smith):
-//! - VALID BY CONSTRUCTION: generated programs parse and type check.
-//!   Any exception is a *generator* bug, and the fuzz target for this
-//!   crate panics on it so it cannot go unnoticed.
-//! - DETERMINISTIC: `from_seed(n)` always yields the same program.
-//! - FUEL-BOUNDED: depth/size budgets keep programs small (20-80 lines)
-//!   and generation fast.
-//! - PLAYS NICE WITH MUTATION: implements `arbitrary::Arbitrary`, so
-//!   libFuzzer drives generation from raw bytes and small input changes
-//!   produce small program changes.
-//!
-//! v1 deliberate scope (see redteam/README.md roadmap):
-//! - types: Int, String, Bool, List(Int), 2-tuples, generated custom enums
-//! - constructs: let bindings (with shadowing bias), blocks, case with
-//!   1-2 subjects, alternatives, aliases, guards, string prefix patterns,
-//!   pipelines, anonymous functions, terminating recursion helpers
-//! - echo statements restricted to Int/String/Bool/List(Int) so that
-//!   cross-target `echo` output is comparable (see the divergence spec)
-//! - NOT in v1: floats, bit arrays, constants, imports, external fns,
-//!   use expressions, todo/panic
-
 use arbitrary::{Arbitrary, Result, Unstructured};
 
 // ---------------------------------------------------------------------------
 // Types
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Ty {
@@ -63,6 +37,7 @@ struct FnSig {
 
 // ---------------------------------------------------------------------------
 // AST
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 enum Expr {
@@ -152,14 +127,8 @@ enum Pattern {
     BoolLit(bool),
     Prefix(&'static str, Option<String>),
     ListNil,
-    ListCons {
-        elems: Vec<Pattern>,
-        rest: RestPat,
-    },
-    CtorPat {
-        name: String,
-        fields: Vec<Pattern>,
-    },
+    ListCons { elems: Vec<Pattern>, rest: RestPat },
+    CtorPat { name: String, fields: Vec<Pattern> },
     TupPat(Box<Pattern>, Box<Pattern>),
     Bits(Vec<BitSegPat>),
 }
@@ -225,18 +194,57 @@ pub struct Module {
 // names, to exercise codegen hygiene — bug class 2 in redteam/README.md)
 
 const VAR_POOL: &[&str] = &[
-    "x", "y", "z", "n", "m", "s", "l", "rest", "value", "acc", "item", "pair", "v",
-    "constructor", "arguments", "prototype", "class", "new", "delete", "default", "length",
-    "self_", "this_",
+    "x",
+    "y",
+    "z",
+    "n",
+    "m",
+    "s",
+    "l",
+    "rest",
+    "value",
+    "acc",
+    "item",
+    "pair",
+    "v",
+    "constructor",
+    "arguments",
+    "prototype",
+    "class",
+    "new",
+    "delete",
+    "default",
+    "length",
+    "self_",
+    "this_",
 ];
 const FN_HOSTILE: &[&str] = &[
-    "delete", "new", "class", "default", "export", "extends", "static", "yield",
-    "arguments", "constructor",
+    "delete",
+    "new",
+    "class",
+    "default",
+    "export",
+    "extends",
+    "static",
+    "yield",
+    "arguments",
+    "constructor",
 ];
 const TYPE_POOL: &[&str] = &["Number", "Record", "Promise", "Object", "Symbol", "Map"];
 const CTOR_POOL: &[&str] = &["Ok", "Error", "Some", "None", "Number", "Record"];
 const LABEL_POOL: &[&str] = &["value", "inner", "data", "constructor", "field"];
-const STR_POOL: &[&str] = &["", "a", "ab", "abc", "b", "bc", "x", "data", "res", "constructor"];
+const STR_POOL: &[&str] = &[
+    "",
+    "a",
+    "ab",
+    "abc",
+    "b",
+    "bc",
+    "x",
+    "data",
+    "res",
+    "constructor",
+];
 /// Single-character strings — used for single-segment utf8 bit-array
 /// subjects so that `<<_:utf8>>` patterns can match exactly (one codepoint,
 /// no leftover bits). The F-12 divergence only manifests when the subject
@@ -468,7 +476,11 @@ impl<'a> Arbitrary<'a> for Module {
         for _ in 0..const_count {
             let cty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool])?.clone();
             let cname = loop {
-                let cand = pick(u, &["k_limit", "k_seed", "k_tag", "k_pi", "k_e", "k_golden"])?.to_string();
+                let cand = pick(
+                    u,
+                    &["k_limit", "k_seed", "k_tag", "k_pi", "k_e", "k_golden"],
+                )?
+                .to_string();
                 if !used_const_names.contains(&cand) {
                     used_const_names.push(cand.clone());
                     break cand;
@@ -544,7 +556,13 @@ fn gen_any_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
 // ---------------------------------------------------------------------------
 // Expression generation
 
-fn gen_expr(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: u8) -> Result<Expr> {
+fn gen_expr(
+    u: &mut Unstructured<'_>,
+    ctx: &mut Ctx,
+    env: &Env,
+    ty: &Ty,
+    depth: u8,
+) -> Result<Expr> {
     // BitArray only ever appears as a case subject (never echoed, never a
     // fn param/return), so a literal is the only sensible producer.
     if matches!(ty, Ty::BitArray) {
@@ -719,7 +737,11 @@ fn gen_bit_array(u: &mut Unstructured<'_>) -> Result<Expr> {
         let seg = if chance(u, 55)? {
             // Single-segment utf8 subjects use 1-char strings so that
             // `<<_:utf8>>` patterns can exactly match (one codepoint).
-            let s = if n == 1 { *pick(u, STR_1CHAR)? } else { *pick(u, STR_POOL)? };
+            let s = if n == 1 {
+                *pick(u, STR_1CHAR)?
+            } else {
+                *pick(u, STR_POOL)?
+            };
             BitSeg::Utf8(s)
         } else {
             let val = *pick(u, INT_POOL)? as u32;
@@ -783,14 +805,27 @@ fn gen_bit_pattern(
             match roll(u, &[(30, 0), (25, 1), (35, 2), (10, 4)])? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
                 1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
-                2 => BitSegPat::Utf8Wild,         // F-12 trigger
+                2 => BitSegPat::Utf8Wild, // F-12 trigger
                 _ => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
             }
         } else {
-            match roll(u, &[(22, 0), (18, 1), (18, 2), (12, 3), (12, 4), (3, 5), (5, 6), (5, 7), (5, 8)])? {
+            match roll(
+                u,
+                &[
+                    (22, 0),
+                    (18, 1),
+                    (18, 2),
+                    (12, 3),
+                    (12, 4),
+                    (3, 5),
+                    (5, 6),
+                    (5, 7),
+                    (5, 8),
+                ],
+            )? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
                 1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
-                2 => BitSegPat::Utf8Wild,         // F-12 trigger
+                2 => BitSegPat::Utf8Wild, // F-12 trigger
                 3 if !bound_one => {
                     bound_one = true;
                     let name = pick(u, VAR_POOL)?.to_string();
@@ -818,7 +853,13 @@ fn gen_bit_pattern(
     Ok(Pattern::Bits(segs))
 }
 
-fn gen_binop(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: u8) -> Result<Expr> {
+fn gen_binop(
+    u: &mut Unstructured<'_>,
+    ctx: &mut Ctx,
+    env: &Env,
+    ty: &Ty,
+    depth: u8,
+) -> Result<Expr> {
     Ok(match ty {
         Ty::Int => match roll(u, &[(30, 0), (30, 1), (20, 2), (15, 3), (5, 4)])? {
             0 => Expr::Bin(
@@ -853,7 +894,14 @@ fn gen_binop(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth:
                 // comparison of ints
                 let op = *pick(
                     u,
-                    &[BinOp::Eq, BinOp::Ne, BinOp::Lt, BinOp::Le, BinOp::Gt, BinOp::Ge],
+                    &[
+                        BinOp::Eq,
+                        BinOp::Ne,
+                        BinOp::Lt,
+                        BinOp::Le,
+                        BinOp::Gt,
+                        BinOp::Ge,
+                    ],
                 )?;
                 Expr::Bin(
                     op,
@@ -924,7 +972,13 @@ fn gen_binop(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth:
     })
 }
 
-fn gen_call(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty, depth: u8) -> Result<Expr> {
+fn gen_call(
+    u: &mut Unstructured<'_>,
+    ctx: &mut Ctx,
+    env: &Env,
+    ty: &Ty,
+    depth: u8,
+) -> Result<Expr> {
     let candidates: Vec<FnSig> = ctx
         .fns
         .iter()
@@ -1131,7 +1185,11 @@ fn covers(ctx: &Ctx, subj_tys: &[Ty], clauses: &[Clause]) -> bool {
         }
     }
     if let [Ty::Custom(k)] = subj_tys {
-        let all: Vec<&str> = ctx.types[*k].ctors.iter().map(|c| c.name.as_str()).collect();
+        let all: Vec<&str> = ctx.types[*k]
+            .ctors
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
         let used: Vec<&str> = clauses
             .iter()
             .filter(|c| c.guard.is_none())
@@ -1154,7 +1212,8 @@ fn covers(ctx: &Ctx, subj_tys: &[Ty], clauses: &[Clause]) -> bool {
 }
 
 fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
-    let mut weights: Vec<(u32, usize)> = vec![(20, 0), (25, 1), (10, 2), (12, 3), (5, 4), (8, 6), (10, 7)];
+    let mut weights: Vec<(u32, usize)> =
+        vec![(20, 0), (25, 1), (10, 2), (12, 3), (5, 4), (8, 6), (10, 7)];
     if !types.is_empty() {
         weights.push((20, 5));
     }
@@ -1268,45 +1327,63 @@ fn gen_pattern(
         Ty::ListInt => gen_list_pattern(u, ctx, env, bound, ty)?,
         Ty::Tup(a, b) => Pattern::TupPat(
             Box::new(gen_pattern(
-                u, ctx, env, bound, &BindSpec::Free, a, depth - 1, used_ints, used_strs,
-                used_ctors, is_last, true,
+                u,
+                ctx,
+                env,
+                bound,
+                &BindSpec::Free,
+                a,
+                depth - 1,
+                used_ints,
+                used_strs,
+                used_ctors,
+                is_last,
+                true,
             )?),
             Box::new(gen_pattern(
-                u, ctx, env, bound, &BindSpec::Free, b, depth - 1, used_ints, used_strs,
-                used_ctors, is_last, true,
+                u,
+                ctx,
+                env,
+                bound,
+                &BindSpec::Free,
+                b,
+                depth - 1,
+                used_ints,
+                used_strs,
+                used_ctors,
+                is_last,
+                true,
             )?),
         ),
-        Ty::Custom(k) => {
-            match roll(u, &[(60, 0), (15, 1), (25, 2)])? {
-                0 => {
-                    let ctor = pick(u, &ctx.types[*k].ctors)?.clone();
-                    let mut fields = Vec::new();
-                    for (_, fty) in &ctor.fields {
-                        fields.push(gen_pattern(
-                            u,
-                            ctx,
-                            env,
-                            bound,
-                            &BindSpec::Free,
-                            fty,
-                            depth - 1,
-                            used_ints,
-                            used_strs,
-                            used_ctors,
-                            is_last,
-                            true,
-                        )?);
-                    }
-                    used_ctors.push(ctor.name.clone());
-                    Pattern::CtorPat {
-                        name: ctor.name.clone(),
-                        fields,
-                    }
+        Ty::Custom(k) => match roll(u, &[(60, 0), (15, 1), (25, 2)])? {
+            0 => {
+                let ctor = pick(u, &ctx.types[*k].ctors)?.clone();
+                let mut fields = Vec::new();
+                for (_, fty) in &ctor.fields {
+                    fields.push(gen_pattern(
+                        u,
+                        ctx,
+                        env,
+                        bound,
+                        &BindSpec::Free,
+                        fty,
+                        depth - 1,
+                        used_ints,
+                        used_strs,
+                        used_ctors,
+                        is_last,
+                        true,
+                    )?);
                 }
-                1 => binder(u, bound, ctx, ty)?,
-                _ => Pattern::Discard,
+                used_ctors.push(ctor.name.clone());
+                Pattern::CtorPat {
+                    name: ctor.name.clone(),
+                    fields,
+                }
             }
-        }
+            1 => binder(u, bound, ctx, ty)?,
+            _ => Pattern::Discard,
+        },
         Ty::BitArray => gen_bit_pattern(u, bound, is_last)?,
     };
 
@@ -1468,29 +1545,30 @@ fn gen_list_pattern(
     bound: &mut Vec<(String, Ty)>,
     _ty: &Ty,
 ) -> Result<Pattern> {
-    let elem = |u: &mut Unstructured<'_>, bound: &mut Vec<(String, Ty)>, ctx: &mut Ctx| {
-        match roll(u, &[(40, 0), (35, 1), (25, 2)]) {
-            Ok(0) => Ok(Pattern::IntLit(u.int_in_range(0..=9)?)),
-            Ok(1) => {
-                let name = if chance(u, 20).unwrap_or(false) {
-                    match ctx.pick_shadow_name(u, env).unwrap_or(None) {
-                        Some(n) => n,
-                        None => pick(u, &["a", "b", "h", "x", "constructor"][..])
-                            .unwrap_or(&"a")
-                            .to_string(),
-                    }
-                } else {
-                    pick(u, &["a", "b", "h", "x", "constructor"][..])?.to_string()
-                };
-                if bound.iter().any(|(n, _)| *n == name) {
-                    Ok(Pattern::Discard)
-                } else {
-                    bound.push((name.clone(), Ty::Int));
-                    Ok(Pattern::Var(name))
+    let elem = |u: &mut Unstructured<'_>, bound: &mut Vec<(String, Ty)>, ctx: &mut Ctx| match roll(
+        u,
+        &[(40, 0), (35, 1), (25, 2)],
+    ) {
+        Ok(0) => Ok(Pattern::IntLit(u.int_in_range(0..=9)?)),
+        Ok(1) => {
+            let name = if chance(u, 20).unwrap_or(false) {
+                match ctx.pick_shadow_name(u, env).unwrap_or(None) {
+                    Some(n) => n,
+                    None => pick(u, &["a", "b", "h", "x", "constructor"][..])
+                        .unwrap_or(&"a")
+                        .to_string(),
                 }
+            } else {
+                pick(u, &["a", "b", "h", "x", "constructor"][..])?.to_string()
+            };
+            if bound.iter().any(|(n, _)| *n == name) {
+                Ok(Pattern::Discard)
+            } else {
+                bound.push((name.clone(), Ty::Int));
+                Ok(Pattern::Var(name))
             }
-            _ => Ok(Pattern::Discard),
         }
+        _ => Ok(Pattern::Discard),
     };
     Ok(match roll(u, &[(20, 0), (25, 1), (25, 2), (30, 3)])? {
         0 => Pattern::ListNil,
@@ -1555,9 +1633,21 @@ fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) ->
             Ty::Int => {
                 let lit = u.int_in_range(0..=9)?;
                 match roll(u, &[(30, 0), (30, 1), (25, 2), (15, 3)])? {
-                    0 => Expr::Bin(BinOp::Gt, Box::new(Expr::Var(name.clone())), Box::new(Expr::IntLit(lit))),
-                    1 => Expr::Bin(BinOp::Le, Box::new(Expr::Var(name.clone())), Box::new(Expr::IntLit(lit))),
-                    2 => Expr::Bin(BinOp::Eq, Box::new(Expr::Var(name.clone())), Box::new(Expr::IntLit(lit))),
+                    0 => Expr::Bin(
+                        BinOp::Gt,
+                        Box::new(Expr::Var(name.clone())),
+                        Box::new(Expr::IntLit(lit)),
+                    ),
+                    1 => Expr::Bin(
+                        BinOp::Le,
+                        Box::new(Expr::Var(name.clone())),
+                        Box::new(Expr::IntLit(lit)),
+                    ),
+                    2 => Expr::Bin(
+                        BinOp::Eq,
+                        Box::new(Expr::Var(name.clone())),
+                        Box::new(Expr::IntLit(lit)),
+                    ),
                     _ => Expr::Bin(
                         BinOp::Eq,
                         Box::new(Expr::Bin(
@@ -1572,12 +1662,20 @@ fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) ->
             Ty::Str => {
                 let lit = *pick(u, STR_POOL)?;
                 let op = *pick(u, &[BinOp::Eq, BinOp::Ne])?;
-                Expr::Bin(op, Box::new(Expr::Var(name.clone())), Box::new(Expr::StrLit(lit)))
+                Expr::Bin(
+                    op,
+                    Box::new(Expr::Var(name.clone())),
+                    Box::new(Expr::StrLit(lit)),
+                )
             }
             Ty::Float => {
                 let lit = *pick(u, FLOAT_POOL)?;
                 let op = *pick(u, &[BinOp::FGt, BinOp::FGe, BinOp::FLt, BinOp::FLe])?;
-                Expr::Bin(op, Box::new(Expr::Var(name.clone())), Box::new(Expr::FloatLit(lit)))
+                Expr::Bin(
+                    op,
+                    Box::new(Expr::Var(name.clone())),
+                    Box::new(Expr::FloatLit(lit)),
+                )
             }
             _ => {
                 if chance(u, 50)? {
@@ -2172,9 +2270,9 @@ mod tests {
                 Err(panic) if gleam_core::redteam::is_known_compiler_bug(&panic) => {
                     eprintln!("seed {seed}: known compiler bug ({panic}), tolerated");
                 }
-                Err(panic) => panic!(
-                    "seed {seed} produced program that CRASHED the compiler: {panic}\n{src}"
-                ),
+                Err(panic) => {
+                    panic!("seed {seed} produced program that CRASHED the compiler: {panic}\n{src}")
+                }
             }
         }
     }
