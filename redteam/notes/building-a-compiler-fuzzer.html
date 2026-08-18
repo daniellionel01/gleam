@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Building a Compiler Fuzzer, From Scratch</title>
+<style>
+  <span class="cm">/* Plain and comfortable. No theme switching, no shadows, no round corners
+     beyond a hairline. The goal is a calm page that reads like a well-set
+     blog post and scrolls without drama. */</span>
+  :root {
+    --text: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --accent: #0a5;
+    --code-bg: #f4f4f4;
+    --code-border: #e2e2e2;
+    --inline-bg: #f2f2f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.7;
+    color: var(--text);
+    background: #fff;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+  }
+  header.hero, main { max-width: 46rem; margin: 0 auto; padding: 0 1.5rem; }
+  header.hero { padding-top: 5rem; }
+  header.hero h1 { font-size: 2rem; line-height: 1.25; margin: 0 0 .5rem; font-weight: 700; }
+  header.hero .sub { color: var(--muted); font-size: 1.15rem; margin: 0; }
+  header.hero .meta { color: var(--muted); font-size: .9rem; margin: .75rem 0 0; }
+  main { padding-bottom: 6rem; }
+  nav.toc { margin: 3rem 0 0; padding: 0 0 .5rem; border-bottom: 1px solid var(--border); }
+  nav.toc h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 .75rem; }
+  nav.toc ol { margin: 0; padding-left: 1.25rem; }
+  nav.toc li { margin: .35rem 0; font-size: 1rem; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  section.chapter { margin: 4.5rem 0; }
+  h2.chapter-title { font-size: 1.7rem; font-weight: 500; margin: 0 0 1rem; }
+  h3 { font-size: 1.25rem; font-weight: 600; margin: 2.5rem 0 .5rem; }
+  h4 { font-size: 1.05rem; font-weight: 600; margin: 2rem 0 .4rem; }
+  p { margin: 1rem 0; }
+  ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+  li { margin: .4rem 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85em; background: var(--inline-bg); padding: 1px 4px;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg); color: #111;
+    border: 1px solid var(--code-border); border-radius: 6px;
+    padding: 1rem 1.25rem; overflow-x: auto; line-height: 1.6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85rem; margin: 1.25rem 0; position: relative;
+  }
+  pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+  .copybtn {
+    position: absolute; top: .4rem; right: .5rem; font-size: .7rem;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 8px; cursor: pointer;
+  }
+  .filepath {
+    display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .75rem; color: var(--muted); margin: 1rem 0 .25rem;
+  }
+  .note, .warn, .ok { border-left: 3px solid; padding: .1rem 1rem; margin: 1.25rem 0; }
+  .note { border-color: #75b3ff; }
+  .warn { border-color: #e0a060; }
+  .ok   { border-color: #7bc96f; }
+  .note strong, .warn strong, .ok strong { display: block; margin-bottom: .25rem; }
+  blockquote { border-left: 3px solid var(--border); margin: 1.25rem 0; padding: .1rem 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; margin: 1.25rem 0; font-size: .95rem; }
+  th, td { border: 1px solid var(--border); padding: .5rem .75rem; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .tick { color: var(--accent); font-weight: 600; }
+  footer { color: var(--muted); font-size: .9rem; margin-top: 4rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+  pre .cm { color: #8a8a8a; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>Building a Compiler Fuzzer, From Scratch</h1>
+  <p class="sub">A walkthrough that shows how to red-team a compiler. Generate well-typed programs and run them on both backends. Then let mismatches and panics find the bugs.</p>
+  <p class="meta">Written for one reader who wants to rebuild this system by hand. It is a companion to the <code>redteam/</code> directory in the Gleam compiler repository.</p>
+</header>
+
+<main>
+
+<nav class="toc">
+  <h2>Table of contents</h2>
+  <ol>
+    <li><a href="#why">Why fuzz a compiler, and what "red teaming" means here</a></li>
+    <li><a href="#architecture">The architecture at a glance</a></li>
+    <li><a href="#probe">The crash oracle: a tiny in-process "probe"</a></li>
+    <li><a href="#generator">The heart: a well-typed program generator</a></li>
+    <li><a href="#crashloop">Feeding it to a fuzzer: the crash loop</a></li>
+    <li><a href="#differential">The differential oracle: run it on both backends</a></li>
+    <li><a href="#batch">Batch campaigns, determinism, resumability</a></li>
+    <li><a href="#triage">Triage: findings, version scope, bisect</a></li>
+    <li><a href="#ops">Running it forever: the VPS + systemd loop</a></li>
+    <li><a href="#lessons">Lessons learned, and where the cleverness hurts</a></li>
+    <li><a href="#reading">Further reading &amp; reference list</a></li>
+  </ol>
+</nav>
+
+<!-- ================================================================ -->
+<section class="chapter" id="why">
+  <h2 class="chapter-title">1. Why fuzz a compiler, and what "red teaming" means here</h2>
+
+  <p>A compiler is software. It takes a program and produces other software. A compiler bug does not usually crash loudly. The compiler silently generates code that does the wrong thing. Or it panics deep in a code path that nobody imagined. These are the worst bugs. The program type-checks. The program builds. Then it misbehaves quietly. Or the build crashes in a way that the user cannot explain.</p>
+
+  <p>The premise of compiler red teaming is simple. It is almost naive:</p>
+
+  <blockquote style="">
+    Throw a large number of valid, well-typed programs at the compiler. Use every backend that the compiler supports. Then check two things. The compiler must never panic. Every backend must compute the same answer.
+  </blockquote>
+
+  <p>From that sentence come two oracles:</p>
+
+  <table>
+    <tr><th>Oracle</th><th>Question it answers</th><th>Needs</th></tr>
+    <tr>
+      <td><strong>Crash oracle</strong></td>
+      <td>"Does the compiler <em>ever panic</em>, on any input?"</td>
+      <td>Feed millions of inputs, catch panics.</td>
+    </tr>
+    <tr>
+      <td><strong>Differential oracle</strong></td>
+      <td>"Do the Erlang and JavaScript backends <em>agree</em>?"</td>
+      <td>Compile each program for both backends. Run both. Compare the output.</td>
+    </tr>
+  </table>
+
+  <p>That is the entire idea. The rest of this document is the engineering that makes the two oracles fast, deterministic, and trustworthy. Gleam is a good target because it has two backends. The two backends can disagree. With two backends, we get a differential oracle for free. Most single-backend languages cannot have one.</p>
+
+  <div class="note">
+    <strong>A founding observation.</strong> The phrase "valid, well-typed programs" carries the main idea. If you throw random bytes at a compiler, you hit only the parser. The parser is the most tested part. It is also the least interesting part. The bugs you want live in the type checker and the code generators. To reach them, you need inputs that parse and type-check. That is the hard problem. It is the centerpiece of this setup.
+  </div>
+
+  <p>What did this find? During the build, the machinery found five bugs. One is a parser panic. One is an Erlang decision-tree panic. One is an Erlang type-name hygiene bug. Two are JavaScript bit-array codegen bugs. Several are silent miscompilations. Erlang and JavaScript simply disagreed about the answer. That is the payoff. The programs look fine. They build fine. They are wrong.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="architecture">
+  <h2 class="chapter-title">2. The architecture at a glance</h2>
+
+  <p>Draw the whole system before you build any part. There are two pipes. They share one trunk.</p>
+
+  <pre><span class="cm"># The shared trunk: a deterministic generator turns a number into a program</span>
+seed ──▶ <span class="tick">gleam-smith</span> (Module::from_seed(n)) ──▶ Gleam source text
+
+<span class="cm"># Pipe A: the crash oracle (millions of inputs, in-process, fast)</span>
+seed ──▶ gleam-smith ──▶ source ──▶ <span class="tick">probe</span> (parse→analyse→codegen) ──▶ panic? → artifact
+
+<span class="cm"># Pipe B: the differential oracle (thousands of inputs, spawns the real compiler)</span>
+seed ──▶ gleam-smith ──▶ source ──▶ gleam run -t erlang ─┐
+                             └─▶ gleam run -t javascript ─┼─▶ compare normalised stdout ──▶ bug?
+</pre>
+
+  <p>The two pipes have very different needs. Much of the design follows from that difference:</p>
+
+  <ul>
+    <li><strong>Pipe A must be fast.</strong> libFuzzer is a coverage-guided fuzzer. It works only when the code under test runs in-process. The code must run in microseconds. If you spawn the <code>gleam</code> binary for each input, the run takes about 300 ms. That is about 300 times too slow. Coverage-guided fuzzing then has no value. Pipe A needs a small in-process hook into the compiler. This hook is the <em>probe</em>.</li>
+    <li><strong>Pipe B must use the real compiler.</strong> To detect miscompilations, the actual compiler must do the actual work. A reimplementation is not enough. Pipe B calls the real <code>gleam</code> binary. The method is slower. That is acceptable. You run a few thousand programs. You do not run millions.</li>
+  </ul>
+
+  <p>This is the file map that you will end up with. All files live in the Gleam repository under <code>redteam/</code> and <code>fuzz/</code>:</p>
+
+<pre>
+redteam/
+  smith/src/lib.rs          <span class="cm"># the generator (the heart)</span>
+  smith/src/main.rs         <span class="cm"># `gen <seed>` / `batch <dir> <start> <n>` CLI</span>
+  bin/diff-run.sh           <span class="cm"># orchestration: spawn both backends, call the normaliser</span>
+  bin/smith-campaign.sh     <span class="cm"># run many seeds, keep divergences</span>
+  bin/version-check.sh      <span class="cm"># does this finding reproduce on a release?</span>
+  diff/src/lib.rs           <span class="cm"># the normaliser (Rust, unit tested)</span>
+  diff/src/main.rs          <span class="cm"># redteam-diff: compare command + report</span>
+  ops/fuzz-loop.sh          <span class="cm"># the infinite VPS loop</span>
+  ops/process-artifacts.sh  <span class="cm"># dedup crash artifacts after each sprint</span>
+  ops/sync-job.sh           <span class="cm"># daily git pull + rebuild + corpus tidy</span>
+  ops/install-systemd.sh    <span class="cm"># install the systemd units</span>
+  corpus/*.gleam            <span class="cm"># hand-written seeds feeding the fuzzer</span>
+  findings.md               <span class="cm"># the journal of every bug found</span>
+compiler-core/src/redteam.rs  <span class="cm"># the in-process probe (Pipe A)</span>
+fuzz/
+  fuzz_targets/parse_only.rs          <span class="cm"># lexer/parser never panics</span>
+  fuzz_targets/compile_all_targets.rs <span class="cm"># full pipeline never panics</span>
+  fuzz_targets/smith_compile.rs       <span class="cm"># generator-driven full pipeline</span>
+  Cargo.toml                          <span class="cm"># cargo-fuzz crate</span>
+</pre>
+
+  <div class="note">
+    <strong>Why the probe lives in the compiler repo.</strong> The probe calls the internal APIs of the compiler directly. The APIs are <code>parse::parse_module</code>, the module analyser, <code>erlang::module</code>, and <code>javascript::module</code>. These are not public APIs. External code cannot call them. To use a separate repository, you must expose the APIs. Or you must accept a slower crash oracle that spawns the binary. That is a real trade-off. The lessons section describes it.
+  </div>
+
+  <p>Build the system from the bottom up. Build the probe first. Then build the generator. Then build the two loops. Then build the operations glue.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="probe">
+  <h2 class="chapter-title">3. The crash oracle: a tiny in-process "probe"</h2>
+
+  <p>The probe is a small module inside the compiler. It runs the pipeline and reports what happened. The pipeline parses, analyses for a target, and generates code. Its contract is one sentence:</p>
+
+  <blockquote style="">The compiler must <em>never panic</em>, on any input. Invalid inputs produce a parse error or an analysis rejection. Anything else is a bug.</blockquote>
+
+  <p>The public surface is one enum and a few functions:</p>
+
+  <span class="filepath">compiler-core/src/redteam.rs</span>
+<pre><span class="cm">// What happened when we pushed an input through the compiler pipeline.</span>
+pub enum ProbeOutcome {
+    InputTooLarge,
+    NotUtf8,
+    ParseError,                          <span class="cm">// invalid program, rejected by parser</span>
+    AnalysisRejected { target: &'static str }, <span class="cm">// rejected by the type checker</span>
+    ParsedOk,                            <span class="cm">// parser-only probe</span>
+    Compiled {
+        javascript_bytes: usize,
+        typescript_bytes: usize,
+        erlang_bytes: usize,
+    },                                   <span class="cm">// the whole pipeline succeeded</span>
+}</pre>
+
+  <p>The workhorse is <code>probe_bytes</code>. It checks the size of the input. It checks that the input is valid UTF-8. Then it runs the pipeline on the input. The <code>catch_unwind</code> wrapper captures a panicking compiler as <em>evidence</em>. The evidence is a string. The compiler does not die. This lets you replay, shrink, and label a crash:</p>
+
+<pre><span class="cm">// Catch any compiler panic and return it as a string payload, so corpus
+// replay and triage tooling can report it as evidence instead of dying.</span>
+pub fn probe_guarded(data: &amp;[u8]) -&gt; Result&lt;ProbeOutcome, String&gt; {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| probe_bytes(data)))
+        .map_err(|payload| panic_payload_to_string(&amp;payload))
+}</pre>
+
+  <p>The two <code>compile_*</code> functions do all the real work. This is the Erlang one. It analyses the module. Then it sends the module to the Erlang code generator:</p>
+
+<pre><span class="cm">// Compile a single module to Erlang. Returns None if rejected by the
+// analyser. May only panic on a genuine compiler bug.</span>
+pub fn compile_erlang(src: &amp;str) -&gt; Option&lt;String&gt; {
+    let (typed, line_numbers) = analyse(src, Target::Erlang)?;
+    Some(erlang::module(&amp;typed, line_numbers, Utf8Path::new("redteam/root")))
+}</pre>
+
+  <p>The <code>analyse</code> function needs your attention. It sets up the prelude. It runs the module analyser. It mirrors what the real build does:</p>
+
+<pre>fn analyse(src: &amp;str, target: Target) -&gt; Option&lt;(TypedModule, LineNumbers)&gt; {
+    let ids = UniqueIdGenerator::new();
+    let mut modules = im::HashMap::new();
+    let _ = modules.insert(PRELUDE_MODULE_NAME.into(), type_::build_prelude(&amp;ids));
+
+    let mut ast = parse_ok(src)?;      <span class="cm">// if it doesn't parse, we're done</span>
+    ast.name = "redteam/probe".into();
+
+    let outcome = ModuleAnalyzerConstructor::&lt;()&gt; {
+        target,
+        ids: &amp;ids,
+        origin: Origin::Src,
+        importable_modules: &amp;modules,
+        warnings: &amp;TypeWarningEmitter::null(),
+        target_support: TargetSupport::NotEnforced,
+        ..
+    }
+    .infer_module(ast, LineNumbers::new(src), "src/redteam_probe.gleam".into());
+
+    <span class="cm">// Only fully-successful analysis reaches codegen, mirroring the real
+    // build pipeline. A PartialFailure carries analysis errors; codegen on
+    // such a module is unreachable in practice.</span>
+    match outcome {
+        Outcome::Ok(typed) =&gt; Some((typed, LineNumbers::new(src))),
+        Outcome::PartialFailure(..) | Outcome::TotalFailure(_) =&gt; None,
+    }
+}</pre>
+
+  <div class="warn">
+    <strong>Golden rule: the probe must mirror the real pipeline exactly.</strong>
+    This is the main source of false findings. Early on, the probe ran an inline module pass. The real build pipeline does not run this pass. Inlining is disabled upstream. The result was two false bugs. They never reproduced on the real compiler. They were artifacts of the probe. The probe did something different from production. If the probe and the real build ever disagree, the probe is wrong. This one lesson has cost more time than any fuzzer bug.
+  </div>
+
+  <p>The last piece of the probe is a known-bug classifier. Once you confirm a bug, you do not want to rediscover it forever. You want new bugs to stand out. So there is a small function. It says that the panic is one we already know about:</p>
+
+<pre><span class="cm">// Panic signatures of CONFIRMED compiler bugs. Fuzz harnesses treat these
+// as expected: skipping them avoids rediscovering known bugs forever, while
+// any NEW panic signature still gets reported.</span>
+pub fn is_known_compiler_bug(panic: &amp;str) -&gt; bool {
+    panic.contains("Token could not be converted to binop") <span class="cm">// parser panic</span>
+        || panic.contains("variable not in scope")           <span class="cm">// erlang codegen panic</span>
+}</pre>
+
+  <p>That is the whole probe. It is about 150 lines. Now we move to the interesting part.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="generator">
+  <h2 class="chapter-title">4. The heart: a well-typed program generator</h2>
+
+  <p>This is the part that needs your real thought. The probe and the diff runner are plumbing. The generator is the brain. It is the difference between fuzzing the parser and fuzzing the compiler.</p>
+
+  <h3>4.1 The core idea: generate for a type, not just anything</h3>
+
+  <p>A naive generator makes random syntax. Most of the syntax fails to type-check. That wastes fuzz budget. The compiler rejects these inputs before codegen. The fix is to make the generator reason about types. The fix comes from <code>wasm-smith</code>. <code>wasm-smith</code> generates valid Wasm modules by construction:</p>
+
+  <blockquote style="">
+    Do not ask the generator to make a random expression. Ask it to make an expression of type <code>Int</code>. The generator picks only things that produce an <code>Int</code>. To make an <code>Int</code>, pick from three choices. Pick an integer literal. Pick a variable that is already bound to an <code>Int</code>. Pick an arithmetic expression such as <code>a + b</code>, where both parts are <code>Int</code>.
+  </blockquote>
+
+  <p>The generator is a small type checker that runs backwards. You give it a required type. It produces a term of that type. It never refers to a variable that is not in scope. That is what "well-typed by construction" means. That is the whole trick.</p>
+
+  <p>The generator needs three things:</p>
+  <ol>
+    <li>An AST. The AST gives the shapes of programs that the generator can make.</li>
+    <li>A <em>type environment</em>. The environment holds the in-scope variables and their types.</li>
+    <li>A <code>gen</code> function. The call <code>gen(env, type)</code> returns an expression. The function is a large, honest <code>match</code> on the type.</li>
+  </ol>
+
+  <h3>4.2 The types and the AST, kept boring</h3>
+
+  <p>A good generator AST is minimal and readable. This version gives you your first real bugs. The real repository has grown more variants: floats, bit arrays, and constants. This is the clean core. The pattern extends without new ideas.</p>
+
+  <span class="filepath">redteam/smith/src/lib.rs (conceptual core)</span>
+<pre><span class="cm">// The types the generator can produce. Kept deliberately small so the
+// generation logic stays comprehensible: "for this type, what can I make?"</span>
+enum Ty {
+    Int,
+    String,           <span class="cm">// "String" is a reserved word in Rust, so Gleam's smith uses Str</span>
+    Bool,
+    List(Box&lt;Ty&gt;),    <span class="cm">// a list of elements of some type</span>
+    Tuple(Box&lt;Ty&gt;, Box&lt;Ty&gt;),
+    Custom(usize),    <span class="cm">// index into the module's generated custom types</span>
+}
+
+<span class="cm">// The AST. One variant per thing the generator knows how to say.</span>
+enum Expr {
+    IntLit(i64),
+    StrLit(String),
+    BoolLit(bool),
+    Var(String),                       <span class="cm">// a reference to an in-scope variable</span>
+    ListLit(Vec&lt;Expr&gt;),
+    TupleLit(Box&lt;Expr&gt;, Box&lt;Expr&gt;),
+    BinOp(BinOp, Box&lt;Expr&gt;, Box&lt;Expr&gt;),
+    If { cond: Box&lt;Expr&gt;, then: Box&lt;Expr&gt;, else_: Box&lt;Expr&gt; },
+    Case { subject: Box&lt;Expr&gt;, clauses: Vec&lt;Clause&gt; },
+    Call { name: String, args: Vec&lt;Expr&gt; },   <span class="cm">// call a generated function</span>
+}</pre>
+
+  <div class="note">
+    <strong>Human judgment: keep it boring.</strong> The production generator has some clever machinery. It uses weighted random choice. It uses shadowing bias pools. It uses a bind-a-specific-name spec for alternative patterns. It uses bit-array segment options. That cleverness is earned later. A real bug must demand it. Do not start there. Start with a generator where you can explain each function to a colleague in one sentence. You can always add cleverness when a real bug demands it. The lesson log at the end shows where the cleverness outran the value.
+  </div>
+
+  <h3>4.3 The type environment</h3>
+
+  <p>The environment is a stack of pairs. Each pair is a name and a type. When you generate a binding, push the new pair. A binding can be a <code>let x = &lt;expr&gt;</code>. It can be a function parameter. It can be a case clause that binds a name. When you need an expression of a type, look at what is in scope for that type:</p>
+
+  <span class="filepath">redteam/smith/src/lib.rs</span>
+<pre><span class="cm">// The environment: names currently bound, and their types.</span>
+type Env = Vec&lt;(String, Ty)&gt;;
+
+<span class="cm">// `gen_expr` looks here when it wants a variable of the required type.</span>
+fn vars_of_type(env: &amp;Env, ty: &amp;Ty) -&gt; Vec&lt;&amp;String&gt; {
+    env.iter()
+        .filter(|(_, t)| t == ty)
+        .map(|(n, _)| n)
+        .collect()
+}</pre>
+
+  <h3>4.4 The generator function: one big honest match</h3>
+
+  <p>This is the function that everything depends on. It takes the environment. It takes a required type. It takes a <code>depth</code> budget. The depth budget stops infinite recursion. It stops the stack from overflowing on nested expressions. The function returns an expression of the required type.</p>
+
+  <span class="filepath">redteam/smith/src/lib.rs (conceptual)</span>
+<pre>fn gen_expr(env: &amp;Env, ty: &amp;Ty, depth: u8) -&gt; Expr {
+    <span class="cm">// Depth guard: at the bottom, fall back to something atomic.</span>
+    if depth == 0 {
+        return gen_atomic(env, ty);
+    }
+
+    <span class="cm">// When picking how to build a value of this type, we only offer choices
+    // that are guaranteed to produce the right type. This is the whole
+    // "well-typed by construction" trick: the type of the RESULT is never in
+    // question, because we derive it from the required type.</span>
+    match ty {
+        Ty::Int =&gt; pick_int_expr(env, depth),           <span class="cm">// literal | var | a+b | a-b | ...</span>
+        Ty::String =&gt; pick_string_expr(env, depth),     <span class="cm">// literal | var | concat</span>
+        Ty::Bool =&gt; pick_bool_expr(env, depth),         <span class="cm">// literal | var | comparison | !</span>
+        Ty::List(inner) =&gt; gen_list_expr(env, inner, depth),
+        Ty::Tuple(a, b) =&gt; gen_tuple_expr(env, a, b, depth),
+        Ty::Custom(idx) =&gt; gen_custom_expr(env, idx, depth),
+    }
+}</pre>
+
+  <p>Each helper is a small function. For example, an <code>Int</code> expression can be one of three things. It can be an integer literal. It can be a reference to an in-scope <code>Int</code> variable. It can be an arithmetic operation. The operands are then <code>Int</code> expressions:</p>
+
+<pre><span class="cm">// All the ways to build an Int. Each recursive gen_expr is asked for an Int,
+// so the result is guaranteed to be an Int.</span>
+fn pick_int_expr(env: &amp;Env, depth: u8) -&gt; Expr {
+    let option = roll(&amp;[40, 30, 30]);   <span class="cm">// weighted choice, 0..=2</span>
+    match option {
+        0 =&gt; Expr::IntLit(int_pool()),                   <span class="cm">// a literal</span>
+        1 =&gt; {
+            <span class="cm">// a variable already in scope, if there's a suitable one</span>
+            let vars = vars_of_type(env, &amp;Ty::Int);
+            if vars.is_empty() { gen_other_int(env, depth) }
+            else { Expr::Var(vars[0].clone()) }
+        }
+        _ =&gt; {
+            <span class="cm">// a + b, a - b, a * b — operands generated recursively</span>
+            let op = pick(&amp;["+", "-", "*"]);
+            let a = gen_expr(env, &amp;Ty::Int, depth - 1);
+            let b = gen_expr(env, &amp;Ty::Int, depth - 1);
+            Expr::BinOp(op, Box::new(a), Box::new(b))
+        }
+    }
+}</pre>
+
+  <p>Note how the recursion pins the type at every level. The call <code>gen_expr(env, &amp;Ty::Int, …)</code> generates the operands. It guarantees that the operands are <code>Int</code>. So <code>a + b</code> is an <code>Int</code>. There can be no type errors. Nesting depth does not matter. This property makes the generator safe to run on millions of inputs. Generated code must compile. If a generated program does not compile, that is a generator bug. The crash loop catches it. See section 5.</p>
+
+  <h3>4.5 Functions and main</h3>
+
+  <p>A program has more than one expression. It has functions with parameters. It has a <code>main</code> function that echoes values. The generator builds a few functions. Each function has typed parameters. Each function has a body that the generator builds as above. Then the generator builds a <code>main</code> function. The <code>main</code> function holds <code>echo &lt;expr&gt;</code> statements.</p>
+
+  <span class="filepath">redteam/smith/src/lib.rs (conceptual)</span>
+<pre>struct FnSig {
+    name: String,
+    params: Vec&lt;(String, Ty)&gt;,   <span class="cm">// named, typed parameters</span>
+    ret: Ty,
+}
+
+fn gen_function(ctx: &amp;mut Ctx) -&gt; (FnSig, Expr) {
+    <span class="cm">// Build the signature: parameters flow into the environment, so the
+    // body can use them.</span>
+    let mut env: Env = Vec::new();
+    let mut params = Vec::new();
+    for _ in 0..param_count() {
+        let pty = gen_any_type(ctx);               <span class="cm">// pick a param type</span>
+        let pname = ctx.fresh("p");                <span class="cm">// p0, p1, p2</span>
+        env.push((pname.clone(), pty.clone()));
+        params.push((pname, pty));
+    }
+
+    let ret = gen_any_type(ctx);                   <span class="cm">// the return type</span>
+    let name = ctx.fresh("f");                     <span class="cm">// f0, f1, f2</span>
+    let body = gen_expr(&amp;env, &amp;ret, 3);            <span class="cm">// generate the body</span>
+    (FnSig { name, params, ret }, body)
+}</pre>
+
+  <p>And <code>main</code> echoes a few generated values of supported echoable types:</p>
+
+<pre>fn gen_main(ctx: &amp;mut Ctx) -&gt; Vec&lt;Stmt&gt; {
+    <span class="cm">// 1-4 echo statements; each echoes a value of a known-printable type so
+    // the cross-backend output is comparable (see the differential section).</span>
+    let mut main = Vec::new();
+    for _ in 0..=int_range(1, 4) {
+        let ty = pick(&amp;[Ty::Int, Ty::String, Ty::Bool, Ty::List(Box::new(Ty::Int))]);
+        let expr = gen_expr(&amp;[], &amp;ty, 3);
+        main.push(Stmt::Echo(expr));
+    }
+    main
+}</pre>
+
+  <div class="note">
+    <strong>Why constrain what <code>echo</code> prints?</strong> The differential oracle compares stdout across backends. Some things render differently. For example, Erlang and JS format a bit-array differently. They format a float differently. If you <code>echo</code> such a value, you get noise. The mismatch looks real but it is not a bug. Keep the echoed types to the ones both backends render identically. This keeps the signal clean. It is a trust-the-oracle decision. Section 6 discusses it.
+  </div>
+
+  <h3>4.6 Rendering: from AST to source text</h3>
+
+  <p>Once you have a <code>Module</code>, you pretty-print it. The renderer walks the AST and writes Gleam source. The work is mechanical. There is one <code>match</code> arm per AST node. There is one real trap. Gleam has no <code>(expr)</code> grouping syntax. To avoid precedence bugs, wrap non-atomic operands in <code>{ }</code> blocks.</p>
+
+  <span class="filepath">redteam/smith/src/lib.rs (conceptual)</span>
+<pre>fn write_expr(out: &amp;mut String, e: &amp;Expr, ind: usize) {
+    match e {
+        Expr::IntLit(n) =&gt; out.push_str(&amp;n.to_string()),
+        Expr::Var(name) =&gt; out.push_str(name),
+        Expr::BinOp(op, a, b) =&gt; {
+            <span class="cm">// Operands that aren't atomic get wrapped in {} to fix precedence.</span>
+            write_operand(out, a, ind);
+            out.push(' ');
+            out.push_str(op);
+            out.push(' ');
+            write_operand(out, b, ind);
+        }
+        <span class="cm">// ... every other node ...</span>
+    }
+}
+
+<span class="cm">// Wrap non-atomic expressions in {} so binops don't accidentally parse
+// with the wrong precedence.</span>
+fn write_operand(out: &amp;mut String, e: &amp;Expr, ind: usize) {
+    if is_atomic(e) { return write_expr(out, e, ind); }
+    out.push('{');
+    write_expr(out, e, ind + 1);
+    out.push('}');
+}</pre>
+
+  <h3>4.7 Determinism: a seed reproduces a program</h3>
+
+  <p>Get one property right early. The same seed must always produce the same program. If generation were random, you cannot shrink a bug. You cannot bisect it. You cannot file a reproducible report. The generator does not use a global RNG. It consumes a byte stream. The byte stream comes from the seed. Every random choice reads bytes from that stream.</p>
+
+  <span class="filepath">redteam/smith/src/lib.rs</span>
+<pre><span class="cm">// Deterministic generation from a 64-bit seed: expand the seed into a byte
+// stream that the Arbitrary implementation drivess from. Same seed, same
+// bytes, same program — forever.</span>
+pub fn from_seed(seed: u64) -&gt; Module {
+    let mut state = seed ^ 0x9E37_79B9_7F4A_7C15;
+    let mut bytes = vec![0u8; 2048];
+    for _ in 0..8 {
+        for chunk in bytes.chunks_mut(8) {
+            state ^= state &lt;&lt; 13;
+            state ^= state &gt;&gt; 7;
+            state ^= state &lt;&lt; 17;
+            let le = state.to_le_bytes();
+            chunk.copy_from_slice(&amp;le[..chunk.len()]);
+        }
+        let mut u = Unstructured::new(&amp;bytes);
+        if let Ok(m) = Module::arbitrary(&amp;mut u) {
+            return m;
+        }
+    }
+    <span class="cm">// Unreachable in practice; a tiny fallback module.</span>
+    fallback_module()
+}</pre>
+
+  <p>The <code>Unstructured</code> cursor turns bytes into values. The call <code>u.int_in_range(0..=9)</code> reads bytes and returns a number in that range. The call <code>pick(u, xs)</code> chooses an element. The mapping is pure. The same bytes in give the same value out. The seed produces the same bytes every time. So the whole process is reproducible. This also lets libFuzzer mutate a seed meaningfully. See section 5.</p>
+
+  <p>In the real repository, the generator implements the Rust <code>Arbitrary</code> trait. Raw fuzz bytes can then drive the generator directly. The fuzz bytes come from libFuzzer. The function <code>from_seed</code> is a thin, seed-first helper. It uses the same logic. One implementation serves both the CLI and the fuzzer.</p>
+
+  <h3>4.8 The CLI that makes it usable by hand</h3>
+
+  <span class="filepath">redteam/smith/src/main.rs (complete, it is short)</span>
+<pre><span class="cm">//! gleam-smith CLI: generate deterministic Gleam programs from seeds.
+//!   gleam-smith gen <seed>                print one program to stdout
+//!   gleam-smith batch <dir> <start> <n>   write seed_<i>.gleam files</span>
+
+use gleam_smith::Module;
+
+fn main() {
+    let args: Vec&lt;String&gt; = std::env::args().collect();
+    let usage = "usage:\n  gleam-smith gen <seed>\n  gleam-smith batch <dir> <start-seed> <count>";
+    match args.get(1).map(String::as_str) {
+        Some("gen") =&gt; {
+            let seed = args.get(2).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
+                eprintln!("{usage}"); std::process::exit(2)
+            });
+            print!("{}", Module::from_seed(seed).to_source());
+        }
+        Some("batch") =&gt; {
+            let (Some(dir), Some(start), Some(count)) = (args.get(2), args.get(3), args.get(4))
+            else { eprintln!("{usage}"); std::process::exit(2) };
+            let start = start.parse().expect("start seed");
+            let count = count.parse().expect("count");
+            std::fs::create_dir_all(dir).expect("create output dir");
+            for seed in start..start + count {
+                let src = Module::from_seed(seed).to_source();
+                std::fs::write(format!("{dir}/seed_{seed}.gleam"), src).expect("write");
+            }
+            println!("wrote {count} programs to {dir}");
+        }
+        _ =&gt; { eprintln!("{usage}"); std::process::exit(2) }
+    }
+}</pre>
+
+  <div class="ok">
+    <strong>Try it right now.</strong> With this code, you can produce well-typed Gleam programs. Throw them at the real compiler by hand.
+    <pre style="margin-top:8px;">cargo run -p gleam-smith -- gen 42 | tee /tmp/p.gleam
+gleam build --target erlang     # does it compile? build clean?
+gleam build --target javascript # does the other backend agree?</pre>
+    The manual loop below is the start of the whole automated rig. Everything from here makes the rig faster and more systematic.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="crashloop">
+  <h2 class="chapter-title">5. Feeding it to a fuzzer: the crash loop</h2>
+
+  <p>Now you automate Pipe A with libFuzzer. You use <code>cargo-fuzz</code>. libFuzzer is a coverage-guided engine. It runs your target function millions of times. It keeps the inputs that hit <em>new code coverage</em>. It mutates these inputs to explore further. It is the correct engine for the question: does the compiler ever panic.</p>
+
+  <p>The crate stays out of the main workspace on purpose. Fuzz builds need a nightly toolchain. They need sanitizer instrumentation. Write one file per target:</p>
+
+  <span class="filepath">fuzz/fuzz_targets/parse_only.rs (complete)</span>
+<pre><span class="cm">// Fuzz target: the lexer and parser must never panic, on any byte sequence.</span>
+<span class="cm">// Kept cheap and fast so it runs at the highest rate possible.</span>
+#![no_main]
+
+use libfuzzer_sys::fuzz_target;
+
+fuzz_target!(|data: &amp;[u8]| {
+    let _ = gleam_core::redteam::probe_parse_bytes(data);
+});</pre>
+
+  <span class="filepath">fuzz/fuzz_targets/compile_all_targets.rs (complete)</span>
+<pre><span class="cm">// Fuzz target: parse -> analyse -> codegen for BOTH targets.
+// The contract is the compiler never panics and never reaches codegen with
+// an invalid internal state. Any panic is a bug; libFuzzer saves the
+// reproducing input to artifacts/.</span>
+#![no_main]
+
+use libfuzzer_sys::fuzz_target;
+
+fuzz_target!(|data: &amp;[u8]| {
+    let _ = gleam_core::redteam::probe_bytes(data);
+});</pre>
+
+  <span class="filepath">fuzz/fuzz_targets/smith_compile.rs (complete)</span>
+<pre><span class="cm">// Fuzz target: raw bytes drive gleam-smith to build a well-typed module,
+// then the FULL pipeline runs on it. This is the target that reaches the
+// codegen bug classes (decision trees, hygiene) that text-mutation fuzzing
+// almost never reaches.</span>
+<span class="cm">// Two panic kinds are caught:
+// - compiler panics on generated programs -> COMPILER BUGS (saved by libFuzzer)
+// - generated program doesn't compile     -> GENERATOR BUGS (raised below)</span>
+#![no_main]
+
+use gleam_smith::Module;
+use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
+use libfuzzer_sys::fuzz_target;
+
+fuzz_target!(|data: &amp;[u8]| {
+    let mut u = Unstructured::new(data);
+    let Ok(module) = u.arbitrary::&lt;Module&gt;() else {
+        return;
+    };
+    let src = module.to_source();
+    match gleam_core::redteam::probe_source(&amp;src) {
+        gleam_core::redteam::ProbeOutcome::Compiled { .. } =&gt; {}
+        other =&gt; panic!("gleam-smith generated non-compiling program ({other}):\n{src}"),
+    }
+});</pre>
+
+  <div class="note">
+    <strong>Why three targets?</strong> Each target is progressively heavier.
+    <ul>
+      <li><code>parse_only</code>: this is the cheapest target. It runs fastest. It checks only the parser. The parser panic for <code>const b = 1 |&gt; 2</code> appeared here. The input was a raw-text mutation. It needed no generator.</li>
+      <li><code>compile_all_targets</code>: this target runs the full pipeline on arbitrary <em>text</em>. It catches panics from any text that looks syntactically valid.</li>
+      <li><code>smith_compile</code>: this target runs the full pipeline on <em>generated well-typed</em> code. It reaches the deep codegen bugs. The text-only targets cannot reach them.</li>
+    </ul>
+    The <code>smith_compile</code> target has a hidden benefit. If the generator makes a program that does not compile, the target panics. libFuzzer saves the input as an artifact. So the fuzzer enforces the valid-by-construction contract of the generator.
+  </div>
+
+  <p>Run them with nightly Rust:</p>
+
+<pre><span class="cm"># per-target corpus dirs grow as coverage is discovered</span>
+cargo +nightly fuzz run smith_compile fuzz/corpus/smith_compile -- -max_total_time=3600 -timeout=25
+cargo +nightly fuzz run compile_all_targets -- -max_total_time=3600 -timeout=25
+cargo +nightly fuzz run parse_only -- -max_total_time=900 -timeout=10</pre>
+
+  <p>When it finds a panic, it saves the input in <code>fuzz/artifacts/&lt;target&gt;/</code>. Then minimize the input. libFuzzer does this with <code>-minimize_crash</code>. Then reduce the input by hand. Find the smallest program that still panics. This is what you file as a bug.</p>
+
+  <div class="warn">
+    <strong>Two failure modes, do not confuse them.</strong>
+    <ol>
+      <li><strong>A compiler panic on generated code</strong> is a real compiler bug. It is gold.</li>
+      <li><strong>Generated code that does not compile</strong> means a generator bug. The generator violated its contract. Fix the generator. Do not file it against the compiler.</li>
+    </ol>
+    The panic hook of libFuzzer fires before any in-process <code>catch_unwind</code>. So both kinds become artifacts. Look at the input to tell them apart. If a generated program fails to compile, the generator is wrong. If a well-formed program panics, the compiler is wrong. Keep this distinction in mind during triage. See section 8.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="differential">
+  <h2 class="chapter-title">6. The differential oracle: run it on both backends</h2>
+
+  <p>The crash oracle finds panics. The differential oracle finds a scarier class. These programs build fine. They run differently on the two backends. This oracle found the JavaScript bit-array miscompilations. Those bugs are silent. There is no crash. There is only a wrong answer on one backend.</p>
+
+  <p>The runner is a shell script. It orchestrates processes. Its core is simple. Compile the program for both backends. Run both programs. Send the raw output to the normaliser. Compare the results.</p>
+
+  <p>The split is deliberate. The shell script spawns processes: it builds the temp project and runs <code>gleam</code> twice. All the text processing lives in Rust. The Rust tool is called <code>redteam-diff</code>. It normalises the two raw outputs, decides the verdict, prints the report, and sets the exit code. The bash script keeps only the orchestration, because spawning processes with timeouts is bash territory. The normaliser is text parsing, so it gets unit tests.</p>
+
+  <span class="filepath">redteam/bin/diff-run.sh (essence)</span>
+<pre>#!/usr/bin/env bash
+set -uo pipefail
+
+INPUT="${1:?usage: diff-run.sh <case.gleam>}"
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/src"
+cp "$INPUT" "$WORK/src/main.gleam"
+printf 'name = "redteam_case"\n' &gt; "$WORK/gleam.toml"
+
+run_target() {   <span class="cm"># $1 = target; echo writes to stderr, captured and normalised</span>
+  (cd "$WORK" &amp;&amp; gleam run --target "$1" --module main) &gt;"$WORK/$1.raw" 2&gt;&amp;1
+}
+
+run_target erlang;      ERLANG_STATUS=$?
+run_target javascript;  JS_STATUS=$?
+
+<span class="cm"># Everything textual — normalise, verdict, report, exit code — happens in Rust.</span>
+redteam-diff compare --input "$INPUT" \
+  "$WORK/erlang.raw" "$WORK/javascript.raw" "$ERLANG_STATUS" "$JS_STATUS"
+exit $?</pre>
+
+  <h3>The normaliser: the hard, boring, essential part</h3>
+
+  <p>There is a trap. Gleam prints build progress to <em>stderr</em>. It prints warnings to stderr. It prints source-location markers to stderr. It prints diagnostic prose to stderr. All of this mixes with the <code>echo</code> output of the program. If you diff the raw output, almost every program shows a mismatch. That is pure noise. The normaliser strips everything except <em>the value-shaped lines</em>. These are the lines the program actually printed.</p>
+
+  <p>This is where you make the trust-the-oracle decisions. For example, Erlang prints the float <code>1.0</code>. JS prints <code>1</code>. JS drops a trailing <code>.0</code>. That is a rendering difference. It is not a bug. The normaliser canonicalises whole-valued floats. It strips the trailing <code>.0</code>. Then <code>1.0</code> and <code>1</code> compare equal.</p>
+
+  <span class="filepath">redteam/diff/src/lib.rs (the normaliser)</span>
+<pre><span class="cm">// Normalise: strip ANSI codes, drop warning blocks, drop the echo
+// source-location line, then WHITELIST only value-shaped lines.
+// A whitelist (not a blacklist) is the robust choice: Gleam emits many
+// diagnostic prose forms (Hint:, multi-line messages, carets) that are
+// fragile to blacklisting; keeping only values keeps the signal clean.</span>
+fn normalise(&amp;self, raw: &amp;str) -&gt; Vec&lt;String&gt; {
+    let mut lines = Vec::new();
+    let mut in_warning = false;
+    for line in raw.lines() {
+        let line = self.ansi.replace_all(line, "").into_owned();
+
+        <span class="cm">// Warning blocks: a `warning:` line starts a block that
+        // continues until (and includes) the next blank line.</span>
+        if in_warning {
+            if line.trim_end().is_empty() { in_warning = false; }
+            continue;
+        }
+        if line.starts_with("warning:") { in_warning = true; continue; }
+
+        <span class="cm">// Drop the per-target echo source-location line.</span>
+        if self.echo_location.is_match(&amp;line) { continue; }
+
+        <span class="cm">// Keep only value-shaped lines.</span>
+        if !self.value_shape.is_match(&amp;line) { continue; }
+
+        <span class="cm">// Canonicalise whole-valued floats so both backends agree.</span>
+        let line = self.whole_float.replace_all(&amp;line, "$1").into_owned();
+        let line = self.trailing_ws.replace_all(&amp;line, "").into_owned();
+        lines.push(line);
+    }
+    lines
+}</pre>
+
+  <div class="note">
+    <strong>Why Rust, not bash?</strong> This function was once an awk/sed/grep pipeline. The pipeline did the same work but had no tests and silent failure modes. The Rust version is unit tested: each stage (ANSI, warning blocks, echo location, whitelist, float canonicalisation, trailing whitespace) has its own test in <code>redteam/diff/src/lib.rs</code>. The process spawning stayed in bash, where it is the easier tool. This is the one piece of the rig that crossed from orchestration into logic, so it is the one piece that earned a real implementation.
+  </div>
+
+  <p>Now I unpack the whitelist regex. It is the product of real experience.
+  <code>^-?[0-9]+$</code> is an integer. <code>^-?[0-9]+\.[0-9]+$</code> is a float. <code>^".*"$</code> is a string. <code>^(True|False)$</code> is a bool. <code>^\[.*\]$</code> is a list. <code>^#\(.*\)$</code> is a tuple. <code>^<<.*>>$</code> is a bit array. <code>^[A-Z][A-Za-z0-9_]*(\(.*\))?$</code> is a constructor. Only lines with these shapes are the program output. Everything else is build noise. The normaliser drops it on both sides.</p>
+
+  <div class="note">
+    <strong>Why a whitelist and not a blacklist?</strong> The first idea is to blacklist the known noise. Strip any <code>warning:</code> line. Strip the progress lines. But the diagnostics of Gleam come in many shapes. They include hints, multi-line messages, carets, and colour codes. New shapes keep appearing. Blacklisting becomes a fight with no end. Whitelisting keeps only what looks like a value. Whitelisting is stable. It does not matter what new noise the compiler emits. The noise never looks like a value.
+  </div>
+
+  <div class="warn">
+    <strong>Trust the oracle — but only up to the edge.</strong> The whole method assumes that a backend disagreement is a bug. That is true only when the expected output is backend-independent. Two things can break this assumption. One has already bitten you.
+    <ol>
+      <li><strong>Rendering differences that you have not normalised.</strong> The float <code>.0</code> is one example. They appear as false positives until you normalise them. Handle each one as you find it.</li>
+      <li><strong>Constructs with true target-divergent semantics.</strong> Early on, echoing bit-arrays produced noise. The two backends rendered them differently by design. The fix was not normalisation. The fix was to stop generating bit-arrays as an echo target. Sometimes you must constrain the generator. Do not tune the normaliser.</li>
+    </ol>
+  </div>
+
+  <p>The <code>--interesting</code> mode is the last piece. It is an exit-code switch. Test-case reducers use it. Interesting means that the input causes a divergence. Keep shrinking the input. Reducers call this switch in a loop. The loop slices the input down to a minimal repro:</p>
+
+<pre>if [ "${1:-}" = "--interesting" ]; then
+  <span class="cm"># Exit 0 iff this input is a divergence.</span>
+  [ "$VERDICT" = "MISMATCH" ]
+  exit $?
+fi</pre>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="batch">
+  <h2 class="chapter-title">7. Batch campaigns, determinism, resumability</h2>
+
+  <p>libFuzzer finds crashes. The differential oracle is a separate pass. It generates a seed. It writes the program. It runs the program on both backends. It keeps the source of any divergence. Running one program at a time is slow. Each program needs two full builds and two runs. So you run the programs in batches.</p>
+
+  <span class="filepath">redteam/bin/smith-campaign.sh (essence)</span>
+<pre><span class="cm"># Run a batch of seeds: for each, write the program, diff-run it, and keep
+# the source of every divergence. Resumable: progress is tracked so a
+# campaign can be interrupted and picked up where it left off.</span>
+GLEAM_BIN="${GLEAM_BIN:-}"   <span class="cm"># pre-built binary fast-path</span>
+OUT="redteam/findings/smith"
+
+<span class="cm"># Where we left off lives in a state file, so the campaign is resumable.</span>
+START="${START_SEED:-$(cat "$OUT/.next-seed" 2&gt;/dev/null || echo 0)}"
+
+for seed in $(seq "$START" $((START + COUNT - 1))); do
+  cargo run -q -p gleam-smith -- gen "$seed" &gt; "$OUT/seed_$seed.gleam"
+  GLEAM_BIN="$GLEAM_BIN" redteam/bin/diff-run.sh "$OUT/seed_$seed.gleam" \
+    | grep -q 'verdict: *MATCH' \
+    &amp;&amp; rm "$OUT/seed_$seed.gleam" \
+    || echo "DIVERGENCE seed $seed kept"
+  <span class="cm"># remember progress so we can resume after a crash</span>
+  echo $(( (seed + 1) % 1000000 )) &gt; "$OUT/.next-seed"
+done</pre>
+
+  <p>Three small pieces of discipline make this usable at scale:</p>
+
+  <ul>
+    <li><strong>Determinism.</strong> The function <code>from_seed(n)</code> always yields the same program. A divergence saved as <code>seed_42.gleam</code> is reproducible. You can regenerate it forever. You never lose a bug to randomness.</li>
+    <li><strong>Resumability.</strong> A long campaign can get interrupted. A VM reboot can stop it. An OOM can stop it. A crash can stop it. The <code>.next-seed</code> file lets you restart and continue. You do not re-run everything.</li>
+    <li><strong>Keep only divergences.</strong> The campaign deletes matches. It keeps only the inputs that produced a mismatch. So the findings directory does not flood with boring programs.</li>
+  </ul>
+
+  <p>This is where the real bug hunting happens in bulk. It is also the loop that found the known bit-array bugs. It found them many times over a few hundred seeds. Sometimes it found a brand-new bug.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="triage">
+  <h2 class="chapter-title">8. Triage: findings, version scope, bisect</h2>
+
+  <p>Finding a divergence or a panic is the start. It is not the end. Triage turns a finding into a filed, fixed, tracked bug. Most of the judgment lives in triage. One hard rule shapes everything:</p>
+
+  <blockquote style="">
+    A finding is not confirmed until it reproduces against the <em>real</em> <code>gleam</code> CLI. It must not reproduce only against the probe. It must not reproduce only on one backend.
+  </blockquote>
+
+  <h3>8.1 The findings journal</h3>
+
+  <p>Every bug gets an entry in <code>redteam/findings.md</code>. Each entry has these parts. The finding number is <code>F-1</code>, <code>F-2</code>, and so on. The minimal repro comes second. The version comes third. The classification comes fourth. The tracker check comes fifth. The current status comes last. The classification is the important habit:</p>
+
+  <ul>
+    <li><strong><code>confirmed-new-bug</code></strong>: the bug reproduces against the real CLI. It is novel on the tracker. It is ready to file.</li>
+    <li><strong><code>probe-artifact</code></strong>: the input crashes only in the in-process harness. It does not crash the real compiler. The probe drifted from the real pipeline. This is not a user-facing bug.</li>
+    <li><strong><code>runner-noise</code></strong>: a false positive. It comes from normalisation, a stale cache, or a version mismatch. It is not a real finding.</li>
+  </ul>
+
+  <p>Honest labels keep the whole operation trustworthy. The label <code>probe-artifact</code> means that we burned a day. The label <code>confirmed-new-bug</code> means that the compiler is really wrong. Spend the extra ten minutes to label honestly. The time pays for itself many times over.</p>
+
+  <h3>8.2 Version scope: is it a regression or long-standing?</h3>
+
+  <p>A bug on unreleased <code>main</code> is an urgent regression. It exists only on main. A bug on the current release is serious. It is a different problem. So the question is this. Does the finding reproduce on the last release?</p>
+
+  <p>The script <code>version-check.sh</code> answers this question. It does not disturb the running fuzzing. It builds the released compiler in a throwaway <code>git worktree</code>. It caches the binary. It plays the fixture through the binary. Then it gives a label. <code>REPRODUCES ON &lt;tag&gt;</code> means long-standing. <code>ABSENT ON &lt;tag&gt;</code> means a main-only regression. One design constraint matters. The fuzz loop never invokes this script. So the check cannot affect the running campaign.</p>
+
+  <div class="note">
+    <strong>Why "is it new?" is not the question.</strong> A bug can be long-standing and still novel on the tracker. Nobody filed it before. Long-standing and already-filed are different axes. Review each finding against the tracker. Do not consider only its age. An old compiler can still hide unfiled bugs. Several of the best findings here were present in the release and were unfiled.
+  </div>
+
+  <h3>8.3 git bisect: which commit introduced it?</h3>
+
+  <p>When you have a confirmed bug with a clean repro, <code>git bisect</code> finds the introducing commit. It does this automatically. It does a binary search over the history. At each step it runs a script. The script says good or bad. The report then changes. It becomes: commit <code>f366e99</code>, this PR, broke it. That is exactly what a maintainer needs.</p>
+
+<pre><span class="cm"># A tiny script that returns 0 for "bug present", 1 for "bug absent".</span>
+cat &gt; /tmp/check.sh &lt;&lt;'EOF'
+#!/bin/bash
+# build this revision of gleam and see if the fixture panics
+cargo build -q -p gleam 2&gt;/dev/null
+cat /tmp/repro.gleam | ./target/debug/gleam build --target erlang 2&gt;/dev/null \
+  | grep -q "Fatal compiler bug"
+EOF
+chmod +x /tmp/check.sh
+git bisect start
+git bisect bad HEAD            <span class="cm"># current HEAD has the bug</span>
+git bisect good v1.18.0        <span class="cm"># this release did not</span>
+git bisect run /tmp/check.sh   <span class="cm"># binary-search to the commit</span></pre>
+
+  <p>A bisect to a specific PR is the most useful thing you can give a maintainer. It often reveals the reason. In this session, bisects of several Erlang decision-tree panics landed on one PR. The title was omit unreachable case clauses in Erlang codegen. That title suggested the root cause. Skipping an unreachable clause dropped a variable registration.</p>
+
+  <div class="warn">
+    <strong>Recheck your assumptions.</strong> During the session, several findings were assumed to reproduce on the installed <code>1.18.1</code>. They did not reproduce. The version-scope check exists because this assumption was wrong more than once. Always run the released binary before you classify. Never trust your memory that the release has the bug.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="ops">
+  <h2 class="chapter-title">9. Running it forever: the VPS + systemd loop</h2>
+
+  <p>A fuzzer that runs for one hour is a demo. A fuzzer that runs for months on a cheap VM is a bug-finding machine. The operations layer is minimal on purpose. A systemd unit runs an infinite loop. A daily sync keeps the checkout fresh.</p>
+
+  <h3>9.1 The infinite loop</h3>
+
+  <span class="filepath">redteam/ops/fuzz-loop.sh (essence)</span>
+<pre>#!/usr/bin/env bash
+<span class="cm"># Runs forever, alternating bounded sprints of the fuzz targets and a
+# differential batch. Never exits on purpose; systemd restarts it if it does.</span>
+set -uo pipefail
+ROOT="${REDTEAM_ROOT:-$HOME/gleam}"
+cd "$ROOT"
+
+SHORT=900        <span class="cm"># seconds per parse_only sprint</span>
+LONG=3600        <span class="cm"># seconds per codegen sprint</span>
+SMITH_BATCH=100  <span class="cm"># differential programs per iteration</span>
+
+while true; do
+  cargo +nightly fuzz run parse_only -- -max_total_time=$SHORT -timeout=10 || true
+  redteam/ops/process-artifacts.sh parse_only || true
+
+  cargo +nightly fuzz run smith_compile fuzz/corpus/smith_compile -- \
+    -max_total_time=$LONG -timeout=25 || true
+  redteam/ops/process-artifacts.sh smith_compile || true
+
+  cargo +nightly fuzz run compile_all_targets -- -max_total_time=$LONG -timeout=25 || true
+  redteam/ops/process-artifacts.sh compile_all_targets || true
+
+  redteam/bin/smith-campaign.sh "" "$SMITH_BATCH" || true
+done</pre>
+
+  <p>Note the <code>|| true</code> on every command. A single sprint can fail. A hang can stop it. An OOM can stop it. A toolchain problem can stop it. The loop must never die because of one sprint. Keep going no matter what is the operating rule of a fuzz box.</p>
+
+  <h3>9.2 The daily sync</h3>
+
+  <p>A fuzzer is only as good as the code it tests. If the compiler changes and you never rebuild, you fuzz yesterday's bugs forever. The sync job runs daily. A systemd timer starts it. The sync job pulls the latest code. It rebuilds the fuzz targets. It tidies the corpus:</p>
+
+<pre>#!/usr/bin/env bash
+<span class="cm"># redteam-sync.timer -> redteam-sync.service -> sync-job.sh, daily at 04:00.</span>
+set -uo pipefail
+ROOT="${REDTEAM_ROOT:-$HOME/gleam}"
+cd "$ROOT"
+
+git fetch origin
+git checkout red-team
+git reset --hard origin/red-team
+
+cargo +nightly fuzz build || exit 1   <span class="cm"># rebuild harness against new compiler</span>
+
+<span class="cm"># minimal libFuzzer needs a working build to shuffle the corpus</span>
+for t in parse_only compile_all_targets smith_compile; do
+  cargo +nightly fuzz cmin "$t" -feature=redteam 2&gt;/dev/null || true
+done</pre>
+
+  <p>The sync job restarts the fuzz service. So it must run systemctl <em>as root</em>. The fuzz loop runs as a non-root user. The clean way is a tightly scoped sudoers rule (see <code>install-systemd.sh</code>). Let exactly one user restart exactly one service. Let the user do nothing else.</p>
+
+  <h3>9.3 The systemd units</h3>
+
+  <p>There are two units and one timer. The fuzz service is the always-on loop. The sync timer nudges it each morning. Three settings matter. <code>Restart=always</code> makes the service self-healing. <code>Nice=10</code> stops the service from starving real workloads. <code>OOMScoreAdjust=500</code> makes the fuzzer die first. The fuzzer is best-effort work.</p>
+
+<pre><span class="cm"># /etc/systemd/system/redteam-fuzz.service</span>
+[Service]
+Type=simple
+User=redteam
+Environment=PATH=/home/redteam/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/redteam/gleam/redteam/ops/fuzz-loop.sh
+Restart=always
+RestartSec=30
+Nice=10
+OOMScoreAdjust=500</pre>
+
+  <p>The comment "lose the OOM fight gracefully" is a deliberate choice. A red-teaming box shares resources with production. It must never crash the production box. So the fuzzer is tuned to die first when memory runs out. That one line of judgment is a boring but important detail. It makes months of infrastructure running survivable.</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="lessons">
+  <h2 class="chapter-title">10. Lessons learned, and where the cleverness hurts</h2>
+
+  <p>If you implement this from scratch, learn these lessons. Some are obvious in hindsight. A few are things that I will change on a rebuild.</p>
+
+  <h3>10.1 What I will build simpler if I start over</h3>
+
+  <p>The production generator has accumulated much cleverness. Each piece was added for a reason. A real bug demanded it. But several pieces are more complex than their payoff. A fresh implementation must start without them. Add them only when a bug proves that they are needed:</p>
+
+  <table>
+    <tr><th>Cleverness in the current code</th><th>Why it got added</th><th>What I will do on a rewrite</th></tr>
+    <tr>
+      <td>Shadowing-bias name pools.</td>
+      <td>Found real hygiene bugs. For example, a type collided with the Erlang built-in <code>record</code>.</td>
+      <td>Start with bland unique names. Add hostile names <em>later</em> as a hardening pass.</td>
+    </tr>
+    <tr>
+      <td><code>BindSpec::{Free, One}</code> for alternative patterns.</td>
+      <td>Alternative patterns must bind identical variables. The rule is subtle in Gleam.</td>
+      <td>Defer alternative patterns at first. They are a rich but tricky target.</td>
+    </tr>
+    <tr>
+      <td>Bit-array segments with endianness and signedness options.</td>
+      <td>The bugs F-12 and F-13 were <code>:utf8</code> patterns. The options broaden the surface.</td>
+      <td>The patterns <code>&lt;&lt;_:utf8&gt;&gt;</code> and <code>&lt;&lt;"str":utf8&gt;&gt;</code> alone find real bugs on day one.</td>
+    </tr>
+    <tr>
+      <td>Deterministic xorshift seed expansion.</td>
+      <td>Reproducibility is essential.</td>
+      <td>You need determinism. Use a standard seeded RNG. Do not hand-roll the bit-twiddling.</td>
+    </tr>
+  </table>
+
+  <p>Here is the meta-lesson. Cleverness is debt. You take the debt on when a bug leaves you no choice. A generator with 200 lines of boring code can find one real bug. It is worth more than an 800-line masterpiece that finds the same bug. Start plain. Let the bugs earn the complexity.</p>
+
+  <h3>10.2 The pipeline-fidelity trap (the most expensive lesson)</h3>
+
+  <p>The costliest mistake was the probe. It did not mirror the real pipeline. It ran an extra inline module pass. Production does not run that pass. The result was two findings. They crashed in the harness. They never reproduced on a real <code>gleam</code> build. They had to be reclassified as <code>probe-artifact</code>. If you take one lesson from this document, take this one:</p>
+
+  <blockquote style="">
+    The in-process probe is a <em>second implementation of the build pipeline</em>. Like every second implementation, it will drift. Confirm anything the probe reports against the real CLI before it counts. The probe must do the absolute minimum. Ideally it calls the same code as the real build. It must not call a parallel copy.
+  </blockquote>
+
+  <h3>10.3 The oracle is a trust decision, not a given</h3>
+
+  <p>Differential testing assumes that backends agree. That assumption is a <em>policy</em> that you set. Keeping the policy costs real effort. You normalise rendering differences. You choose not to generate constructs with target-divergent semantics. Every false positive that you triage is a bug in your model. The bug is in what you call agreement. Keep the model honest and current. If you do not, the signal drowns.</p>
+
+  <h3>10.4 Label findings like a scientist</h3>
+
+  <p>The classification keeps the journal trustworthy. The classes are <code>confirmed-new-bug</code>, <code>probe-artifact</code>, and <code>runner-noise</code>. Follow this discipline. Verify against the real CLI. Check the tracker. Note the version scope. Then label the finding. If you skip a step, you will file a non-bug or miss a real one.</p>
+
+  <h3>10.5 The boring loop is the machine</h3>
+
+  <p>The generator and oracles are the interesting parts. They are about 30 percent of the work. The rest is the hard part. Build it once. Make it reproducible. Run it forever. Keep it from crashing the box. Keep it honest about what it found. A fuzzer that runs for a month is a bug-finding machine. A clever fuzzer that runs for one hour is a demo. Most of the bugs came from monthly runtime. They did not come from cleverness.</p>
+
+  <div class="ok">
+    <strong>The loop that matters.</strong> Generate a program. Run both backends. Compare the output. Keep the divergence. Minimise the input. Check the version. Bisect the history. File the bug. Add it to the known-bugs list. Then the loop does not rediscover it. That is the whole job. You can run the loop by hand. Or you can let a VM run it forever.
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="reading">
+  <h2 class="chapter-title">11. Further reading &amp; reference list</h2>
+
+  <p>This project stands on a long tradition of compiler fuzzing. To understand where these ideas come from, start with these references:</p>
+
+  <ul>
+    <li><strong><a href="https://www.cs.utah.edu/~regehr/papers/pldi11.pdf" target="_blank" rel="noopener">Finding and Understanding Bugs in C Compilers</a></strong> (CSmith). The paper is the foundation of compiler fuzzing. It defined the method. The method generates well-defined programs and uses differential testing. Read this paper first.</li>
+    <li><strong><a href="https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasm-smith" target="_blank" rel="noopener">wasm-smith</a></strong>. It is the direct ancestor of this generator. It generates valid Wasm modules by construction. Its source is the clearest existing implementation of type-directed generation.</li>
+    <li><strong><a href="https://llvm.org/docs/LibFuzzer.html" target="_blank" rel="noopener">libFuzzer documentation</a></strong>. It is short and authoritative. It describes the coverage-guided engine that the crash loop uses.</li>
+    <li><strong><a href="https://rust-fuzz.github.io/book/cargo-fuzz.html" target="_blank" rel="noopener">The cargo-fuzz book</a></strong>. It describes the Rust workflow for structured fuzzing with the <code>Arbitrary</code> trait.</li>
+    <li><strong>Delta debugging</strong> (Zeller &amp; Hildebrandt, "Simplifying and Isolating Failure-Inducing Input"). This algorithm shrinks a crash to a minimal repro.</li>
+    <li><strong><a href="https://github.com/JohnReedRoth/TreeReduction" target="_blank" rel="noopener">treereduce</a></strong>. It is a structure-aware reducer. Point it at the <code>--interesting</code> test. It shrinks divergences automatically.</li>
+  </ul>
+
+  <p>These are the two repositories that this work is based on. Read the actual working code there:</p>
+
+  <ul>
+    <li><a href="https://github.com/gleam-lang/gleam/tree/main/redteam" target="_blank" rel="noopener">Gleam's <code>redteam/</code> directory</a> — all of the above, for real.</li>
+    <li><a href="https://github.com/gleam-lang/gleam/tree/main/compiler-core/src/redteam.rs" target="_blank" rel="noopener">The probe</a> in the Gleam compiler.</li>
+  </ul>
+
+  <footer>
+    <p>This page is a companion to the <code>redteam/</code> red-teaming campaign in the Gleam compiler repository. Everything described is implemented and running there. This page is a from-scratch teaching version. It is simpler than the production code in a few places. Section 10 notes those places.</p>
+  </footer>
+</section>
+
+</main>
+
+<script>
+  <span class="cm">// Tiny, dependency-free niceties: copy-to-clipboard on code blocks.</span>
+  document.querySelectorAll('pre').forEach(function (pre) {
+    var btn = document.createElement('button');
+    btn.className = 'copybtn';
+    btn.textContent = 'copy';
+    btn.addEventListener('click', function () {
+      var code = pre.querySelector('code') || pre;
+      var range = document.createRange();
+      range.selectNodeContents(code);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      try { document.execCommand('copy'); } catch (e) {}
+      sel.removeAllRanges();
+      btn.textContent = 'copied';
+      setTimeout(function () { btn.textContent = 'copy'; }, 1200);
+    });
+    pre.appendChild(btn);
+  });
+</script>
+
+</body>
+</html>
