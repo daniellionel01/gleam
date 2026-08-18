@@ -9,16 +9,16 @@
 #   redteam/bin/diff-run.sh path/to/case.gleam        # human-readable report
 #   redteam/bin/diff-run.sh --interesting case.gleam  # exit 0 iff divergence found
 #
+# The normaliser and verdict decision live in `redteam-diff` (Rust, unit
+# tested in redteam/diff/src/lib.rs). This script keeps only the process
+# orchestration: temp project, spawning gleam on both targets, invoking
+# the Rust tool. The report format and exit-code semantics are unchanged,
+# so callers (smith-campaign.sh, version-check.sh) work untouched.
+#
 # Notes:
 # - `echo` writes to stderr, merged with build progress and warnings. The
-#   normaliser strips progress, warning blocks (awk: `warning:`..blank),
-#   the per-target echo source-location line, and finally WHITELISTS only
-#   value-shaped lines. The whitelist is the robust backstop — Gleam emits
-#   many diagnostic prose forms (Hint:, multi-line messages, carets) that
-#   are fragile to blacklist; a value-shape whitelist keeps only what the
-#   program actually prints. This keeps target-specific warnings (e.g. the
-#   F-3 record() hygiene warning, Erlang-only) out of the differential
-#   signal — we compare program output, not compiler complaints.
+#   normaliser strips progress, warning blocks, the per-target echo
+#   source-location line, and finally WHITELISTS only value-shaped lines.
 # - The --interesting mode is an "interestingness test" for test-case
 #   reducers (e.g. treereduce): exit 0 means "this input is a divergence,
 #   keep shrinking it".
@@ -38,6 +38,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 command -v erl  >/dev/null || { echo "error: Erlang (erl) not found" >&2; exit 2; }
 command -v node >/dev/null || { echo "error: Node.js (node) not found" >&2; exit 2; }
+
+# Locate the redteam-diff binary: explicit override, then a prebuilt one,
+# then a cargo run fallback (first use builds it).
+DIFF_BIN="${REDTEAM_DIFF:-}"
+if [ -z "$DIFF_BIN" ]; then
+  for cand in "$ROOT/target/release/redteam-diff" "$ROOT/target/debug/redteam-diff"; do
+    if [ -x "$cand" ]; then DIFF_BIN="$cand"; break; fi
+  done
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -62,9 +71,25 @@ run_target() {
   return $?
 }
 
-# Normalise: strip ANSI, warning blocks (awk: warning:..blank), the echo
-# source-location line, then WHITELIST value-shaped lines only.
-# Value shapes: Int, String, Bool, List, Tuple, BitArray, constructor.
+ERLANG_STATUS=0
+JS_STATUS=0
+run_target erlang || ERLANG_STATUS=$?
+run_target javascript --runtime nodejs || JS_STATUS=$?
+
+if [ -n "$DIFF_BIN" ]; then
+  # Rust path: normalise, decide, report, exit code all in one.
+  if [ "$MODE" = "interesting" ]; then
+    "$DIFF_BIN" compare --interesting --input "$INPUT" \
+      "$WORK/erlang.raw" "$WORK/javascript.raw" "$ERLANG_STATUS" "$JS_STATUS"
+  else
+    "$DIFF_BIN" compare --input "$INPUT" \
+      "$WORK/erlang.raw" "$WORK/javascript.raw" "$ERLANG_STATUS" "$JS_STATUS"
+  fi
+  exit $?
+fi
+
+# Fallback (no binary yet): replicate the report in bash so the script is
+# still usable before the first `cargo build`.
 normalise() {
   sed -E $'s/\\x1b\\[[0-9;]*m//g' "$1" \
     | awk '
@@ -78,11 +103,6 @@ normalise() {
     | sed -E 's/^(-?[0-9]+)\.0$/\1/' \
     | sed -E 's/[[:space:]]+$//'
 }
-
-ERLANG_STATUS=0
-JS_STATUS=0
-run_target erlang || ERLANG_STATUS=$?
-run_target javascript --runtime nodejs || JS_STATUS=$?
 
 normalise "$WORK/erlang.raw" > "$WORK/erlang.out"
 normalise "$WORK/javascript.raw" > "$WORK/javascript.out"

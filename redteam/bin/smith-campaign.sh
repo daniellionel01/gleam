@@ -35,7 +35,7 @@ START="${START:-0}"
 PROG_TIMEOUT="${PROG_TIMEOUT:-30}"
 
 echo "[smith-campaign] building generator + compiler (release)..."
-cargo build -q --release --manifest-path "$ROOT/Cargo.toml" -p gleam-smith -p gleam
+cargo build -q --release --manifest-path "$ROOT/Cargo.toml" -p gleam-smith -p gleam -p redteam-diff
 export GLEAM_BIN="$ROOT/target/release/gleam"
 SMITH="$ROOT/target/release/gleam-smith"
 

@@ -12,6 +12,7 @@ members = [
   "test-helpers-rs",
   "test-commands",
   "redteam/smith",
+  "redteam/diff",
   "test-output",
   "test-package-compiler",
   "test-project-compiler",
