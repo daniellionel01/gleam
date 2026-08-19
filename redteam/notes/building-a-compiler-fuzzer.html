@@ -71,8 +71,8 @@
 <body>
 <header>
   <h1>Building a Compiler Fuzzer, From Scratch</h1>
-  <p class="sub">A walkthrough that shows how to red-team a compiler. Generate well-typed programs and run them on both backends. Then let mismatches and panics find the bugs.</p>
-  <p class="meta">Written for one reader who wants to rebuild this system by hand. It is a companion to the <code>redteam/</code> directory in the Gleam compiler repository.</p>
+  <p class="sub">A walkthrough that shows how to fuzzing a compiler. Generate well-typed programs and run them on both backends. Then let mismatches and panics find the bugs.</p>
+  <p class="meta">Written for one reader who wants to rebuild this system by hand. It is a companion to the <code>fuzzing/</code> directory in the Gleam compiler repository.</p>
 </header>
 
 <main>
@@ -80,7 +80,7 @@
 <nav class="toc">
   <h2>Table of contents</h2>
   <ol>
-    <li><a href="#why">Why fuzz a compiler, and what "red teaming" means here</a></li>
+    <li><a href="#why">Why fuzz a compiler, and what fuzzing can find</a></li>
     <li><a href="#architecture">The architecture at a glance</a></li>
     <li><a href="#isolation">The rule that keeps everything isolated: zero compiler changes</a></li>
     <li><a href="#probe">Phase 1, step by step: the crash probe</a></li>
@@ -95,11 +95,11 @@
   </ol>
 </nav>
 <section class="chapter" id="why">
-  <h2 class="chapter-title">1. Why fuzz a compiler, and what "red teaming" means here</h2>
+  <h2 class="chapter-title">1. Why fuzz a compiler, and what fuzzing can find</h2>
 
   <p>A compiler is software. It takes a program and produces other software. A compiler bug does not usually crash loudly. The compiler silently generates code that does the wrong thing. Or it panics deep in a code path that nobody imagined. These are the worst bugs. The program type-checks. The program builds. Then it misbehaves quietly. Or the build crashes in a way that the user cannot explain.</p>
 
-  <p>The premise of compiler red teaming is simple. It is almost naive:</p>
+  <p>The premise of compiler fuzzing is simple. It is almost naive:</p>
 
   <blockquote style="">
     Throw a large number of valid, well-typed programs at the compiler. Use every backend that the compiler supports. Then check two things. The compiler must never panic. Every backend must compute the same answer.
@@ -135,13 +135,13 @@
   <p>Draw the whole system before you build any part. There are two pipes. They share one trunk.</p>
 
   <pre><span class="cm"># The shared trunk: a deterministic generator turns a number into a program</span>
-seed ──▶ <span class="tick">gleam-smith</span> (Module::from_seed(n)) ──▶ Gleam source text
+seed ──▶ <span class="tick">fuzzing-core</span> (Module::from_seed(n)) ──▶ Gleam source text
 
 <span class="cm"># Pipe A: the crash oracle (millions of inputs, in-process, fast)</span>
-seed ──▶ gleam-smith ──▶ source ──▶ <span class="tick">redteam-probe</span> (parse→analyse→codegen) ──▶ panic? → artifact
+seed ──▶ fuzzing-core ──▶ source ──▶ <span class="tick">fuzzing-core probe</span> (parse→analyse→codegen) ──▶ panic? → artifact
 
 <span class="cm"># Pipe B: the differential oracle (thousands of inputs, spawns the real compiler)</span>
-seed ──▶ gleam-smith ──▶ source ──▶ gleam run -t erlang ─┐
+seed ──▶ fuzzing-core ──▶ source ──▶ gleam run -t erlang ─┐
                              └─▶ gleam run -t javascript ─┼─▶ compare normalised stdout ──▶ bug?
 </pre>
 
@@ -152,29 +152,34 @@ seed ──▶ gleam-smith ──▶ source ──▶ gleam run -t erlang ─┐
     <li><strong>Pipe B must use the real compiler.</strong> To detect miscompilations, the actual compiler must do the actual work. A reimplementation is not enough. Pipe B calls the real <code>gleam</code> binary. The method is slower. That is acceptable. You run a few thousand programs. You do not run millions.</li>
   </ul>
 
-  <p>This is the file map that you will end up with. All fuzzing code lives in <code>redteam/</code> and <code>fuzz/</code>. <strong>The compiler itself is untouched.</strong></p>
+  <p>This is the file map that you will end up with. Everything lives in two crates — <code>fuzzing-core</code> (the one workspace crate, stable toolchain) and <code>fuzzing-harness</code> (the cargo-fuzz crate outside the workspace) — plus <code>fuzzing/</code> for scripts, seeds, and the findings journal. <strong>The compiler itself is untouched.</strong></p>
 
 <pre>
-redteam/
-  probe/src/lib.rs          <span class="cm"># the crash probe (Pipe A), external crate, public API only</span>
-  smith/src/lib.rs          <span class="cm"># the generator (the heart)</span>
-  smith/src/main.rs         <span class="cm"># `gen &lt;seed&gt;` / `batch &lt;dir&gt; &lt;start&gt; &lt;n&gt;` CLI</span>
-  diff/src/lib.rs           <span class="cm"># the normaliser (Rust, unit tested)</span>
-  diff/src/main.rs          <span class="cm"># redteam-diff: compare command + report</span>
-  bin/diff-run.sh           <span class="cm"># orchestration: spawn both backends, call redteam-diff</span>
-  bin/smith-campaign.sh     <span class="cm"># run many seeds, keep divergences</span>
-  bin/version-check.sh      <span class="cm"># does this finding reproduce on a release?</span>
-  ops/fuzz-loop.sh          <span class="cm"># the infinite VPS loop</span>
-  ops/process-artifacts.sh  <span class="cm"># dedup crash artifacts after each sprint</span>
-  ops/sync-job.sh           <span class="cm"># daily git pull + rebuild + corpus tidy</span>
-  ops/install-systemd.sh    <span class="cm"># install the systemd units</span>
-  corpus/*.gleam            <span class="cm"># hand-written seeds feeding the fuzzer</span>
-  findings.md               <span class="cm"># the journal of every bug found</span>
-fuzz/
+fuzzing-core/                    <span class="cm"># workspace member, stable toolchain — the one crate</span>
+  Cargo.toml                     <span class="cm"># probe + generator + normaliser + the gen/diff bins</span>
+  src/lib.rs                     <span class="cm"># modules: probe, generator, normaliser (re-exported)</span>
+  src/probe.rs                   <span class="cm"># the crash probe (Pipe A), public API only</span>
+  src/generator.rs               <span class="cm"># the generator (the heart)</span>
+  src/normaliser.rs              <span class="cm"># the normaliser (Rust, unit tested)</span>
+  src/bin/gen.rs                 <span class="cm"># `gen &lt;seed&gt;` / `batch &lt;dir&gt; &lt;start&gt; &lt;n&gt;` CLI</span>
+  src/bin/diff.rs                <span class="cm"># diff: compare command + report</span>
+  examples/classify.rs           <span class="cm"># play-with-it example for the probe</span>
+fuzzing-harness/                 <span class="cm"># cargo-fuzz crate, NOT a workspace member</span>
+  Cargo.toml                     <span class="cm"># deps: libfuzzer-sys + fuzzing-core</span>
   fuzz_targets/parse_only.rs          <span class="cm"># lexer/parser never panics (Phase 1)</span>
   fuzz_targets/compile_all_targets.rs <span class="cm"># full pipeline never panics (Phase 1)</span>
   fuzz_targets/smith_compile.rs       <span class="cm"># generator-driven full pipeline (Phase 2)</span>
-  Cargo.toml                          <span class="cm"># cargo-fuzz crate</span>
+fuzzing/
+  bin/diff-run.sh                <span class="cm"># orchestration: spawn both backends, call the diff bin</span>
+  bin/smith-campaign.sh          <span class="cm"># run many seeds, keep divergences</span>
+  bin/version-check.sh           <span class="cm"># does this finding reproduce on a release?</span>
+  ops/fuzz-loop.sh               <span class="cm"># the infinite VPS loop</span>
+  ops/process-artifacts.sh       <span class="cm"># dedup crash artifacts after each sprint</span>
+  ops/sync-job.sh                <span class="cm"># daily git pull + rebuild + corpus tidy</span>
+  ops/install-systemd.sh         <span class="cm"># install the systemd units</span>
+  ops/setup.sh                   <span class="cm"># one-command provisioning</span>
+  corpus/*.gleam                 <span class="cm"># hand-written seeds feeding the fuzzer</span>
+  findings.md                    <span class="cm"># the journal of every bug found</span>
 </pre>
 </section>
 <section class="chapter" id="isolation">
@@ -202,10 +207,10 @@ fuzz/
     <li><code>gleam_core::uid::UniqueIdGenerator</code>, <code>warning::WarningEmitter</code>, <code>build::{Target, Origin, Outcome}</code>, <code>codegen::TypeScriptDeclarations</code> — plumbing.</li>
   </ul>
 
-  <p>One type is not re-exported by <code>gleam-core</code>: <code>LineNumbers</code> from the <code>src-span</code> crate. That is fine. <code>src-span</code> is a separate workspace crate. The probe crate depends on it directly. No compiler change needed.</p>
+  <p>One type is not re-exported by <code>gleam-core</code>: <code>LineNumbers</code> from the <code>src-span</code> crate. That is fine. <code>src-span</code> is a separate workspace crate. <code>fuzzing-core</code> depends on it directly. No compiler change needed.</p>
 
   <div class="ok">
-    <strong>Proof it works.</strong> The first version of this project put the probe inside <code>compiler-core</code> (as <code>redteam.rs</code>) plus ~40 lines of cosmetic renames across 14 files. None of it was necessary. The current version is a standalone crate, <code>redteam/probe</code>, that uses only the public API above. <code>git diff main..red-team -- compiler-core/</code> is empty. Zero lines. Zero merge risk.
+    <strong>Proof it works.</strong> The first version of this project put the probe inside <code>compiler-core</code> (as <code>fuzzing.rs</code>) plus ~40 lines of cosmetic renames across 14 files. None of it was necessary. The current version is the <code>probe</code> module of <code>fuzzing-core</code>, an external crate that uses only the public API above. <code>git diff main..fuzzing -- compiler-core/</code> is empty. Zero lines. Zero merge risk.
   </div>
 
   <p>There is one caveat worth knowing. <code>wasm-smith</code> must validate that its output is well-formed Wasm. It uses <code>wasmparser</code>, a separate crate. Our generator must validate that its output type-checks. It uses the real <code>gleam-core</code> analyser through the probe. That is the same idea: consume the compiler as a library, through its public interface.</p>
@@ -217,12 +222,12 @@ fuzz/
 
   <h3>4.1 Create the crate</h3>
 
-  <p>Add one entry to the root <code>Cargo.toml</code> workspace members: <code>"redteam/probe"</code>. The crate is a normal library:</p>
+  <p>Add one entry to the root <code>Cargo.toml</code> workspace members: <code>"fuzzing-core"</code>. This is the only crate you add to the workspace. It holds every Rust module on this page — the probe, the generator, and the normaliser — plus the two CLIs. Start it as a normal library:</p>
 
-  <span class="filepath">redteam/probe/Cargo.toml (complete)</span>
+  <span class="filepath">fuzzing-core/Cargo.toml (complete)</span>
 <pre>[package]
-name = "redteam-probe"
-description = "Red team probing surface for the Gleam compiler, driven externally via public API only"
+name = "fuzzing-core"
+description = "Gleam compiler fuzzing: crash probe, well-typed generator, differential normaliser, and the gen/diff CLIs"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -230,21 +235,35 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "gen"
+path = "src/bin/gen.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "diff"
+path = "src/bin/diff.rs"
+test = false
+doc = false
+
 [dependencies]
-gleam-core = { path = "../../compiler-core" }
-src-span = { path = "../../src-span" }
+gleam-core = { path = "../compiler-core" }
+src-span = { path = "../src-span" }
 camino.workspace = true
 ecow.workspace = true
 im.workspace = true
+arbitrary = "1"
+regex = { workspace = true }
 </pre>
 
   <div class="note">
-    <strong>Dependencies.</strong> <code>gleam-core</code> is the compiler crate itself. <code>src-span</code> gives <code>LineNumbers</code>. <code>camino</code>, <code>ecow</code>, and <code>im</code> are the same types the compiler's public API exposes. All are already workspace dependencies. You add no new crates to the repository.
+    <strong>Dependencies.</strong> <code>gleam-core</code> is the compiler crate itself. <code>src-span</code> gives <code>LineNumbers</code>. <code>camino</code>, <code>ecow</code>, and <code>im</code> are the same types the compiler's public API exposes. <code>arbitrary</code> drives the generator from libFuzzer bytes. <code>regex</code> is the normaliser's workhorse. All but <code>arbitrary</code> and <code>regex</code> are already workspace dependencies; you add no new crates to the repository. The two <code>[[bin]]</code> entries declare the CLIs: <code>gen</code> (section 6) and <code>diff</code> (section 7).
   </div>
 
   <h3>4.2 The probe itself</h3>
 
-  <p>This is the complete crate, <code>redteam/probe/src/lib.rs</code>. Read it in order:</p>
+  <p>This is the complete probe module, <code>fuzzing-core/src/probe.rs</code>. Read it in order:</p>
 
   <ol>
     <li><code>ProbeOutcome</code> — the classification. What happened to this input?</li>
@@ -255,13 +274,13 @@ im.workspace = true
     <li><code>analyse</code> — the heart. Sets up the prelude, runs the analyser. Mirrors the real build exactly.</li>
   </ol>
 
-  <details><summary><span class="filepath">redteam/probe/src/lib.rs (complete)</span> <em>(complete, 296 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing-core/src/probe.rs (complete)</span> <em>(complete, 296 lines — click to expand)</em></summary>
 <pre>// SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 
-//! Red team probing surface for the compiler, driven EXTERNALLY.
+//! Gleam-compiler fuzzing probe, driven EXTERNALLY.
 //!
-//! This crate lives entirely OUTSIDE compiler-core. It composes only the
+//! This module lives entirely OUTSIDE compiler-core. It composes only the
 //! public API of `gleam_core` (parse, analyse, erlang, javascript, type_,
 //! build, codegen, uid, warning) plus the separate `src-span` crate for
 //! `LineNumbers`. Nothing in compiler-core is modified.
@@ -429,8 +448,8 @@ pub fn compile_javascript(src: &amp;str) -&gt; Option&lt;String&gt; {
         typescript: TypeScriptDeclarations::None,
         source_map: false,
         stdlib_package: StdlibPackage::Present,
-        path: Utf8Path::new("src/redteam_probe.gleam"),
-        project_root: Utf8Path::new("redteam/root"),
+        path: Utf8Path::new("src/fuzzing_probe.gleam"),
+        project_root: Utf8Path::new("fuzzing/root"),
     });
     Some(output)
 }
@@ -447,13 +466,13 @@ pub fn compile_erlang(src: &amp;str) -&gt; Option&lt;String&gt; {
     Some(erlang::module(
         &amp;typed,
         line_numbers,
-        Utf8Path::new("redteam/root"),
+        Utf8Path::new("fuzzing/root"),
     ))
 }
 
 fn parse_ok(src: &amp;str) -&gt; Option&lt;UntypedModule&gt; {
     parse::parse_module(
-        Utf8PathBuf::from("redteam/probe.gleam"),
+        Utf8PathBuf::from("fuzzing/probe.gleam"),
         src,
         &amp;WarningEmitter::null(),
     )
@@ -468,10 +487,10 @@ fn analyse(src: &amp;str, target: Target) -&gt; Option&lt;(TypedModule, LineNumb
     let _ = modules.insert(PRELUDE_MODULE_NAME.into(), type_::build_prelude(&amp;ids));
 
     let mut ast = parse_ok(src)?;
-    ast.name = "redteam/probe".into();
+    ast.name = "fuzzing/probe".into();
 
     let mut config = PackageConfig::default();
-    config.name = "redteam".into();
+    config.name = "fuzzing".into();
     let direct_dependencies: HashMap&lt;EcoString, ()&gt; = HashMap::new();
     let dev_dependencies: HashSet&lt;EcoString&gt; = HashSet::new();
 
@@ -489,7 +508,7 @@ fn analyse(src: &amp;str, target: Target) -&gt; Option&lt;(TypedModule, LineNumb
     .infer_module(
         ast,
         LineNumbers::new(src),
-        "src/redteam_probe.gleam".into(),
+        "src/fuzzing_probe.gleam".into(),
     );
 
     match outcome {
@@ -563,14 +582,14 @@ mod tests {
 
   <p>Now you have a probe. Do not wire it to a fuzzer yet. Play with it. The crate ships unit tests. Run them:</p>
 
-<pre>cargo test -p redteam-probe
+<pre>cargo test -p fuzzing-core
 <span class="cm"># 4 tests: valid compiles, invalid rejected, binary inputs handled, panics caught</span></pre>
 
   <p>Then classify inputs by hand. The fastest way is a throwaway example binary:</p>
 
-<pre>cargo run -p redteam-probe --example classify 2>/dev/null   || cargo new --lib /tmp/play && cd /tmp/play
+<pre>cargo run -p fuzzing-core --example classify 2>/dev/null   || cargo new --lib /tmp/play && cd /tmp/play
 <span class="cm"># or, simplest: add this as an example in the probe crate:</span>
-cat &gt; redteam/probe/examples/classify.rs &lt;&lt;'EOF'
+cat &gt; fuzzing-core/examples/classify.rs &lt;&lt;'EOF'
 fn main() {
     for src in [
         "pub fn main() { 1 }",
@@ -578,11 +597,11 @@ fn main() {
         "pub fn main() { 1 +. \"x\" }",
         "pub fn main() {",
     ] {
-        println!("{src:?} -> {}", redteam_probe::probe_source(src));
+        println!("{src:?} -> {}", fuzzing_core::probe::probe_source(src));
     }
 }
 EOF
-cargo run -p redteam-probe --example classify</pre>
+cargo run -p fuzzing-core --example classify</pre>
 
   <p>Every input gets one of six answers. <code>compiled</code> means the whole pipeline succeeded. <code>parse error</code> and <code>analysis rejected</code> are the normal outcomes for invalid programs. The probe never panics. Try to make it panic. You probably cannot. That is the contract working.</p>
 
@@ -604,9 +623,9 @@ cargo run -p redteam-probe --example classify</pre>
 
   <p>Now you automate the probe with libFuzzer. You use <code>cargo-fuzz</code>. libFuzzer is a coverage-guided engine. It runs your target function millions of times. It keeps the inputs that hit <em>new code coverage</em>. It mutates these inputs to explore further. It is the correct engine for the question: does the compiler ever panic.</p>
 
-  <p>The fuzz crate is <code>fuzz/</code>. It stays out of the main workspace on purpose. Fuzz builds need a nightly toolchain. They need sanitizer instrumentation. Its manifest:</p>
+  <p>The harness crate is <code>fuzzing-harness/</code>. It stays out of the main workspace on purpose. Fuzz builds need a nightly toolchain. They need sanitizer instrumentation. Its manifest:</p>
 
-  <span class="filepath">fuzz/Cargo.toml (complete)</span>
+  <span class="filepath">fuzzing-harness/Cargo.toml (complete)</span>
 <pre># SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
 #
@@ -615,7 +634,7 @@ cargo run -p redteam-probe --example classify</pre>
 # regular build does not want.
 
 [package]
-name = "gleam-redteam-fuzz"
+name = "fuzzing-harness"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -626,8 +645,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-gleam-smith = { path = "../redteam/smith" }
-redteam-probe = { path = "../redteam/probe" }
+fuzzing-core = { path = "../fuzzing-core" }
 
 # Prevent the fuzzer from spending cycles on its own instrumentation-heavy
 # deps being optimised; keep the build reproducible across runs.
@@ -660,7 +678,7 @@ doc = false
 
   <p>The cheapest target. It runs the lexer and parser on raw bytes. The parser panic for <code>const b = 1 |&gt; 2</code> appeared here. It needed no generator. A raw-text mutation found it.</p>
 
-  <span class="filepath">fuzz/fuzz_targets/parse_only.rs (complete)</span>
+  <span class="filepath">fuzzing-harness/fuzz_targets/parse_only.rs (complete)</span>
 <pre>// SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 //
@@ -672,7 +690,7 @@ doc = false
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &amp;[u8]| {
-    let _ = redteam_probe::probe_parse_bytes(data);
+    let _ = fuzzing_core::probe::probe_parse_bytes(data);
 });
 </pre>
 
@@ -680,7 +698,7 @@ fuzz_target!(|data: &amp;[u8]| {
 
   <p>Runs the full pipeline on arbitrary text. It catches panics from any text that looks syntactically valid. It is the text-mutation workhorse.</p>
 
-  <span class="filepath">fuzz/fuzz_targets/compile_all_targets.rs (complete)</span>
+  <span class="filepath">fuzzing-harness/fuzz_targets/compile_all_targets.rs (complete)</span>
 <pre>// SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 //
@@ -694,7 +712,7 @@ fuzz_target!(|data: &amp;[u8]| {
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &amp;[u8]| {
-    let _ = redteam_probe::probe_bytes(data);
+    let _ = fuzzing_core::probe::probe_bytes(data);
 });
 </pre>
 
@@ -707,7 +725,7 @@ fuzz_target!(|data: &amp;[u8]| {
 <pre>cargo +nightly fuzz run parse_only -- -max_total_time=900 -timeout=10
 cargo +nightly fuzz run compile_all_targets -- -max_total_time=3600 -timeout=25</pre>
 
-  <p>When it finds a panic, it saves the input in <code>fuzz/artifacts/&lt;target&gt;/</code>. Then minimize the input. libFuzzer does this with <code>-minimize_crash</code>. Then reduce the input by hand. Find the smallest program that still panics. This is what you file as a bug.</p>
+  <p>When it finds a panic, it saves the input in <code>fuzzing-harness/artifacts/&lt;target&gt;/</code>. Then minimize the input. libFuzzer does this with <code>-minimize_crash</code>. Then reduce the input by hand. Find the smallest program that still panics. This is what you file as a bug.</p>
 </section>
 <section class="chapter" id="generator">
   <h2 class="chapter-title">6. Phase 2: the well-typed program generator</h2>
@@ -733,34 +751,17 @@ cargo +nightly fuzz run compile_all_targets -- -max_total_time=3600 -timeout=25<
     <li>A <code>gen</code> function. The call <code>gen(env, type)</code> returns an expression. The function is a large, honest <code>match</code> on the type.</li>
   </ol>
 
-  <h3>6.2 The crate</h3>
+  <h3>6.2 The crate and its manifest</h3>
 
-  <span class="filepath">redteam/smith/Cargo.toml (complete)</span>
-<pre># SPDX-License-Identifier: Apache-2.0
-# SPDX-FileCopyrightText: 2026 The Gleam contributors
+  <p>The generator is the <code>generator</code> module of <code>fuzzing-core</code>. It is not a separate crate, and it adds no workspace member. The manifest from section 4.1 already declares every dependency it needs.</p>
 
-[package]
-name = "gleam-smith"
-version = "0.1.0"
-edition = "2024"
-license = "Apache-2.0"
-publish = false
-description = "Deterministic type-directed Gleam program generator for compiler red teaming (wasm-smith style)"
-
-[dependencies]
-arbitrary = "1"
-
-[dev-dependencies]
-redteam-probe = { path = "../probe" }
-</pre>
-
-  <p>Note the <code>arbitrary</code> dependency. It lets libFuzzer bytes drive the generator directly. The probe is a <em>dev-dependency</em>. The generator uses it only in its own validation tests, never at runtime.</p>
+  <p>Two dependencies matter here. <code>arbitrary</code> lets libFuzzer bytes drive the generator directly. <code>gleam-core</code> is used only by the probe — the generator validates its own output through the probe in its test suite, never at runtime. Because the generator and the probe live in the same crate, those tests call <code>crate::probe</code>. No dev-dependency is needed.</p>
 
   <h3>6.3 The types and the AST, kept boring</h3>
 
   <p>A good generator AST is minimal and readable. This version gives you your first real bugs. The real repository has grown more variants: floats, bit arrays, and constants. This is the clean core. The pattern extends without new ideas.</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs — types and AST (conceptual core)</span>
+  <span class="filepath">fuzzing-core/src/generator.rs — types and AST (conceptual core)</span>
 <pre><span class="cm">// The types the generator can produce. Kept deliberately small so the
 // generation logic stays comprehensible: "for this type, what can I make?"</span>
 enum Ty {
@@ -794,7 +795,7 @@ enum Expr {
 
   <p>The environment is a stack of pairs. Each pair is a name and a type. When you generate a binding, push the new pair. A binding can be a <code>let x = &lt;expr&gt;</code>. It can be a function parameter. It can be a case clause that binds a name. When you need an expression of a type, look at what is in scope for that type:</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs</span>
+  <span class="filepath">fuzzing-core/src/generator.rs</span>
 <pre><span class="cm">// The environment: names currently bound, and their types.</span>
 type Env = Vec&lt;(String, Ty)&gt;;
 
@@ -810,7 +811,7 @@ fn vars_of_type(env: &amp;Env, ty: &amp;Ty) -&gt; Vec&lt;&amp;String&gt; {
 
   <p>This is the function that everything depends on. It takes the environment. It takes a required type. It takes a <code>depth</code> budget. The depth budget stops infinite recursion. The function returns an expression of the required type.</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs (conceptual)</span>
+  <span class="filepath">fuzzing-core/src/generator.rs (conceptual)</span>
 <pre>fn gen_expr(env: &amp;Env, ty: &amp;Ty, depth: u8) -&gt; Expr {
     <span class="cm">// Depth guard: at the bottom, fall back to something atomic.</span>
     if depth == 0 {
@@ -861,7 +862,7 @@ fn pick_int_expr(env: &amp;Env, depth: u8) -&gt; Expr {
 
   <p>A program has more than one expression. It has functions with parameters. It has a <code>main</code> function that echoes values.</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs (conceptual)</span>
+  <span class="filepath">fuzzing-core/src/generator.rs (conceptual)</span>
 <pre>struct FnSig {
     name: String,
     params: Vec&lt;(String, Ty)&gt;,   <span class="cm">// named, typed parameters</span>
@@ -908,7 +909,7 @@ fn gen_function(ctx: &amp;mut Ctx) -&gt; (FnSig, Expr) {
 
   <p>Once you have a <code>Module</code>, you pretty-print it. The renderer walks the AST and writes Gleam source. The work is mechanical. There is one real trap. Gleam has no <code>(expr)</code> grouping syntax. To avoid precedence bugs, wrap non-atomic operands in <code>{ }</code> blocks.</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs (conceptual)</span>
+  <span class="filepath">fuzzing-core/src/generator.rs (conceptual)</span>
 <pre>fn write_expr(out: &amp;mut String, e: &amp;Expr, ind: usize) {
     match e {
         Expr::IntLit(n) =&gt; out.push_str(&amp;n.to_string()),
@@ -938,7 +939,7 @@ fn write_operand(out: &amp;mut String, e: &amp;Expr, ind: usize) {
 
   <p>Get one property right early. The same seed must always produce the same program. If generation were random, you cannot shrink a bug. You cannot bisect it. The generator does not use a global RNG. It consumes a byte stream. The byte stream comes from the seed.</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs</span>
+  <span class="filepath">fuzzing-core/src/generator.rs</span>
 <pre><span class="cm">// Deterministic generation from a 64-bit seed: expand the seed into a byte
 // stream that the Arbitrary implementation drivess from. Same seed, same
 // bytes, same program — forever.</span>
@@ -968,17 +969,17 @@ pub fn from_seed(seed: u64) -&gt; Module {
 
   <p>The generator is a library. It also has a tiny CLI. You use the CLI to inspect programs by hand. You use it in the batch campaign script.</p>
 
-  <span class="filepath">redteam/smith/src/main.rs (complete)</span>
-<pre>//! gleam-smith CLI: generate deterministic Gleam programs from seeds.
+  <span class="filepath">fuzzing-core/src/bin/gen.rs (complete)</span>
+<pre>//! gen CLI: `fuzzing-core` deterministic program generator.
 //!
-//!   gleam-smith gen &lt;seed&gt;                print one program to stdout
-//!   gleam-smith batch &lt;dir&gt; &lt;start&gt; &lt;n&gt;   write seed_&lt;i&gt;.gleam files
+//!   gen &lt;seed&gt;                print one program to stdout
+//!   gen batch &lt;dir&gt; &lt;start&gt; &lt;n&gt;   write seed_&lt;i&gt;.gleam files
 
-use gleam_smith::Module;
+use fuzzing_core::generator::Module;
 
 fn main() {
     let args: Vec&lt;String&gt; = std::env::args().collect();
-    let usage = "usage:\n  gleam-smith gen &lt;seed&gt;\n  gleam-smith batch &lt;dir&gt; &lt;start-seed&gt; &lt;count&gt;";
+    let usage = "usage:\n  gen &lt;seed&gt;\n  gen batch &lt;dir&gt; &lt;start-seed&gt; &lt;count&gt;";
     match args.get(1).map(String::as_str) {
         Some("gen") =&gt; {
             let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
@@ -1012,7 +1013,7 @@ fn main() {
 
   <div class="ok">
     <strong>Try it right now.</strong> With this code, you can produce well-typed Gleam programs. Throw them at the real compiler by hand.
-    <pre style="margin-top:8px;">cargo run -p gleam-smith -- gen 42 | tee /tmp/p.gleam
+    <pre style="margin-top:8px;">cargo run -p fuzzing-core -- gen 42 | tee /tmp/p.gleam
 gleam build --target erlang     # does it compile? build clean?
 gleam build --target javascript # does the other backend agree?</pre>
     The manual loop below is the start of the whole automated rig.
@@ -1022,18 +1023,18 @@ gleam build --target javascript # does the other backend agree?</pre>
 
   <p>The generator has a contract. Every program it makes must compile. If a generated program does not compile, that is a generator bug. The generator verifies the contract in its own test suite. It generates 300 programs. It pushes each through the probe. Any rejection is a test failure:</p>
 
-  <span class="filepath">redteam/smith/src/lib.rs (test module)</span>
+  <span class="filepath">fuzzing-core/src/generator.rs (test module)</span>
 <pre>#[test]
 fn generated_programs_compile_0_to_300() {
     for seed in 0..300u64 {
         let module = Module::from_seed(seed);
         let src = module.to_source();
-        match redteam_probe::probe_guarded(src.as_bytes()) {
+        match crate::probe::probe_guarded(src.as_bytes()) {
             Ok(ProbeOutcome::Compiled { .. }) =&gt; {}
             Ok(outcome) =&gt; panic!(
                 "seed {seed} produced non-compiling program (outcome: {outcome}):\n{src}"
             ),
-            Err(panic) if redteam_probe::is_known_compiler_bug(&amp;panic) =&gt; {
+            Err(panic) if crate::probe::is_known_compiler_bug(&amp;panic) =&gt; {
                 eprintln!("seed {seed}: known compiler bug ({panic}), tolerated");
             }
             Err(panic) =&gt; {
@@ -1043,9 +1044,9 @@ fn generated_programs_compile_0_to_300() {
     }
 }</pre>
 
-  <p>This test is why the probe is a dev-dependency of <code>gleam-smith</code>. The generator never calls the compiler at runtime. It calls the compiler only to prove itself correct.</p>
+  <p>This test is why the probe and the generator share one crate. The generator never calls the compiler at runtime. It calls the compiler only to prove itself correct.</p>
 
-  <details><summary><span class="filepath">redteam/smith/src/lib.rs — the complete generator (2,200+ lines, click to expand)</span> <em>(complete, 2280 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing-core/src/generator.rs — the complete generator (2,200+ lines, click to expand)</span> <em>(complete, 2280 lines — click to expand)</em></summary>
 <pre>use arbitrary::{Arbitrary, Result, Unstructured};
 
 // ---------------------------------------------------------------------------
@@ -1239,7 +1240,7 @@ pub struct Module {
 
 // ---------------------------------------------------------------------------
 // Name pools (hostile on purpose: JS/Erlang reserved words and prelude
-// names, to exercise codegen hygiene — bug class 2 in redteam/README.md)
+// names, to exercise codegen hygiene — bug class 2 in fuzzing/README.md)
 
 const VAR_POOL: &amp;[&amp;str] = &amp;[
     "x",
@@ -3262,12 +3263,12 @@ fn push_indent(out: &amp;mut String, ind: usize) {
 
 // ---------------------------------------------------------------------------
 // Validation: the generator's own contract, checked against the real
-// compiler. Run with `cargo test -p gleam-smith`.
+// compiler. Run with `cargo test -p fuzzing-core`.
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redteam_probe::ProbeOutcome;
+    use crate::probe::ProbeOutcome;
 
     #[test]
     fn determinism() {
@@ -3280,42 +3281,42 @@ mod tests {
     }
 
     /// Replay a fuzz artifact (raw Arbitrary entropy) manually:
-    ///   REDTEAM_ARTIFACT=path cargo test -p gleam-smith replay_artifact -- --ignored --nocapture
+    ///   FUZZING_ARTIFACT=path cargo test -p fuzzing-core replay_artifact -- --ignored --nocapture
     #[test]
     #[ignore = "manual artifact replay helper"]
     fn replay_artifact() {
-        let path = std::env::var("REDTEAM_ARTIFACT").expect("set REDTEAM_ARTIFACT");
+        let path = std::env::var("FUZZING_ARTIFACT").expect("set FUZZING_ARTIFACT");
         let data = std::fs::read(&amp;path).expect("read artifact");
         let mut u = Unstructured::new(&amp;data);
         let module = Module::arbitrary(&amp;mut u).expect("artifact decodes");
         let src = module.to_source();
         println!("--- generated source:\n{src}");
-        match redteam_probe::probe_guarded(src.as_bytes()) {
+        match crate::probe::probe_guarded(src.as_bytes()) {
             Ok(outcome) =&gt; println!("--- outcome: {outcome}"),
             Err(panic) =&gt; {
                 println!("--- guarded panic: {panic}");
                 println!(
                     "--- known bug? {}",
-                    redteam_probe::is_known_compiler_bug(&amp;panic)
+                    crate::probe::is_known_compiler_bug(&amp;panic)
                 );
             }
         }
     }
 
     /// Every generated program must parse and type check on both targets
-    /// and reach code generation. A failure here is a gleam-smith bug,
+    /// and reach code generation. A failure here is a fuzzing-core bug,
     /// not a gleam bug.
     #[test]
     fn generated_programs_compile_0_to_300() {
         for seed in 0..300u64 {
             let module = Module::from_seed(seed);
             let src = module.to_source();
-            match redteam_probe::probe_guarded(src.as_bytes()) {
+            match crate::probe::probe_guarded(src.as_bytes()) {
                 Ok(ProbeOutcome::Compiled { .. }) =&gt; {}
                 Ok(outcome) =&gt; panic!(
                     "seed {seed} produced non-compiling program (outcome: {outcome}):\n{src}"
                 ),
-                Err(panic) if redteam_probe::is_known_compiler_bug(&amp;panic) =&gt; {
+                Err(panic) if crate::probe::is_known_compiler_bug(&amp;panic) =&gt; {
                     eprintln!("seed {seed}: known compiler bug ({panic}), tolerated");
                 }
                 Err(panic) =&gt; {
@@ -3332,11 +3333,11 @@ mod tests {
 
   <p>The third fuzz target drives the whole thing from libFuzzer bytes. Raw bytes become a <code>Module</code>. The module becomes source. The source runs through the full pipeline. If the compiler panics on a generated program, libFuzzer saves the input: a real compiler bug. If the program does not compile, the target panics with a clear message: a generator bug.</p>
 
-  <span class="filepath">fuzz/fuzz_targets/smith_compile.rs (complete)</span>
+  <span class="filepath">fuzzing-harness/fuzz_targets/smith_compile.rs (complete)</span>
 <pre>// SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 //
-// Fuzz target 2 (type-directed): raw bytes drive gleam-smith to build a
+// Fuzz target 2 (type-directed): raw bytes drive fuzzing-core to build a
 // well-typed Gleam module; the module is pushed through the full pipeline
 // (parse -&gt; analyse x2 targets -&gt; JS + TS + Erlang codegen). This is the
 // target that reaches the codegen bug classes (decision trees, hygiene)
@@ -3346,13 +3347,13 @@ mod tests {
 // - compiler panics on generated programs: COMPILER BUGS. libFuzzer's
 //   panic hook aborts before any catch_unwind can fire, so these always
 //   become artifacts; known-bug shapes (F-5, F-6) are suppressed in the
-//   generator itself (see Ctx::protected in gleam-smith), not filtered
+//   generator itself (see Ctx::protected in fuzzing-core), not filtered
 //   here.
-// - generated program doesn't compile: GENERATOR BUGS (gleam-smith's
+// - generated program doesn't compile: GENERATOR BUGS (fuzzing-core's
 //   valid-by-construction contract), raised below.
 #![no_main]
 
-use gleam_smith::Module;
+use fuzzing_core::generator::Module;
 use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -3362,9 +3363,9 @@ fuzz_target!(|data: &amp;[u8]| {
         return;
     };
     let src = module.to_source();
-    match redteam_probe::probe_source(&amp;src) {
-        redteam_probe::ProbeOutcome::Compiled { .. } =&gt; {}
-        other =&gt; panic!("gleam-smith generated non-compiling program ({other}):\n{src}"),
+    match fuzzing_core::probe::probe_source(&amp;src) {
+        fuzzing_core::probe::ProbeOutcome::Compiled { .. } =&gt; {}
+        other =&gt; panic!("fuzzing-core generated a non-compiling program ({other}):\n{src}"),
     }
 });
 </pre>
@@ -3385,11 +3386,11 @@ fuzz_target!(|data: &amp;[u8]| {
 
   <p>The runner is a shell script. It orchestrates processes. Its core is simple. Compile the program for both backends. Run both programs. Send the raw output to the normaliser. Compare the results.</p>
 
-  <p>The split is deliberate. The shell script spawns processes: it builds the temp project and runs <code>gleam</code> twice. All the text processing lives in Rust. The Rust tool is called <code>redteam-diff</code>. It normalises the two raw outputs, decides the verdict, prints the report, and sets the exit code.</p>
+  <p>The split is deliberate. The shell script spawns processes: it builds the temp project and runs <code>gleam</code> twice. All the text processing lives in Rust. The Rust tool is the <code>diff</code> CLI of <code>fuzzing-core</code>. It normalises the two raw outputs, decides the verdict, prints the report, and sets the exit code.</p>
 
   <h3>7.1 The runner script (complete)</h3>
 
-  <details><summary><span class="filepath">redteam/bin/diff-run.sh (complete)</span> <em>(complete, 135 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/bin/diff-run.sh (complete)</span> <em>(complete, 135 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
@@ -3398,11 +3399,11 @@ fuzz_target!(|data: &amp;[u8]| {
 # observable behaviour (program output + exit status).
 #
 # Usage:
-#   redteam/bin/diff-run.sh path/to/case.gleam        # human-readable report
-#   redteam/bin/diff-run.sh --interesting case.gleam  # exit 0 iff divergence found
+#   fuzzing/bin/diff-run.sh path/to/case.gleam        # human-readable report
+#   fuzzing/bin/diff-run.sh --interesting case.gleam  # exit 0 iff divergence found
 #
-# The normaliser and verdict decision live in `redteam-diff` (Rust, unit
-# tested in redteam/diff/src/lib.rs). This script keeps only the process
+# The normaliser and verdict decision live in `fuzzing-core` (Rust, unit
+# tested in fuzzing-core/src/normaliser.rs). This script keeps only the process
 # orchestration: temp project, spawning gleam on both targets, invoking
 # the Rust tool. The report format and exit-code semantics are unchanged,
 # so callers (smith-campaign.sh, version-check.sh) work untouched.
@@ -3431,11 +3432,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." &amp;&amp; pwd)"
 command -v erl  &gt;/dev/null || { echo "error: Erlang (erl) not found" &gt;&amp;2; exit 2; }
 command -v node &gt;/dev/null || { echo "error: Node.js (node) not found" &gt;&amp;2; exit 2; }
 
-# Locate the redteam-diff binary: explicit override, then a prebuilt one,
+# Locate the diff binary: explicit override, then a prebuilt one,
 # then a cargo run fallback (first use builds it).
-DIFF_BIN="${REDTEAM_DIFF:-}"
+DIFF_BIN="${FUZZING_DIFF:-}"
 if [ -z "$DIFF_BIN" ]; then
-  for cand in "$ROOT/target/release/redteam-diff" "$ROOT/target/debug/redteam-diff"; do
+  for cand in "$ROOT/target/release/diff" "$ROOT/target/debug/diff"; do
     if [ -x "$cand" ]; then DIFF_BIN="$cand"; break; fi
   done
 fi
@@ -3444,7 +3445,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/src"
 cp "$INPUT" "$WORK/src/main.gleam"
-printf 'name = "redteam_case"\n' &gt; "$WORK/gleam.toml"
+printf 'name = "fuzzing_case"\n' &gt; "$WORK/gleam.toml"
 
 GLEAM_BIN="${GLEAM_BIN:-}"
 if [ -n "$GLEAM_BIN" ]; then
@@ -3510,7 +3511,7 @@ if [ "$MODE" = "interesting" ]; then
   exit $?
 fi
 
-echo "=== redteam diff-run ==="
+echo "=== fuzzing diff-run ==="
 echo "input:           $INPUT"
 echo "erlang status:   $ERLANG_STATUS"
 echo "nodejs status:   $JS_STATUS"
@@ -3527,13 +3528,13 @@ fi
 </pre>
 </details>
 
-  <p>This is the whole script. It is orchestration only. The verdict, the normalised outputs, and the exit code all come from <code>redteam-diff</code>. The <code>--interesting</code> mode is the exit-code switch that test-case reducers use. Interesting means: this input causes a divergence, keep shrinking it.</p>
+  <p>This is the whole script. It is orchestration only. The verdict, the normalised outputs, and the exit code all come from the <code>diff</code> CLI of <code>fuzzing-core</code>. The <code>--interesting</code> mode is the exit-code switch that test-case reducers use. Interesting means: this input causes a divergence, keep shrinking it.</p>
 
   <h3>7.2 The normaliser (complete)</h3>
 
   <p>There is a trap. Gleam prints build progress to <em>stderr</em>. It prints warnings to stderr. It prints source-location markers to stderr. It prints diagnostic prose to stderr. All of this mixes with the <code>echo</code> output of the program. If you diff the raw output, almost every program shows a mismatch. That is pure noise. The normaliser strips everything except <em>the value-shaped lines</em>.</p>
 
-  <span class="filepath">redteam/diff/src/lib.rs — the normaliser (complete)</span>
+  <span class="filepath">fuzzing-core/src/normaliser.rs — the normaliser (complete)</span>
 <pre>// SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 
@@ -3541,7 +3542,7 @@ fi
 //!
 //! Converts one target's raw `gleam run` output into the set of
 //! value-shaped lines the program actually printed. Replaces the
-//! awk/sed/grep pipeline that previously lived in `redteam/bin/diff-run.sh`.
+//! awk/sed/grep pipeline that previously lived in `fuzzing/bin/diff-run.sh`.
 //!
 //! Pipeline, in order (must match the old bash exactly):
 //!   1. strip ANSI colour codes
@@ -3705,17 +3706,17 @@ mod tests {
 
   <h3>7.3 The compare CLI (complete)</h3>
 
-  <span class="filepath">redteam/diff/src/main.rs (complete)</span>
+  <span class="filepath">fuzzing-core/src/bin/diff.rs (complete)</span>
 <pre>// SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 
 //! Differential-oracle CLI.
 //!
 //! Subcommands:
-//!   redteam-diff compare [--interesting] &lt;erlang.raw&gt; &lt;js.raw&gt; &lt;erl-status&gt; &lt;js-status&gt;
+//!   diff compare [--interesting] &lt;erlang.raw&gt; &lt;js.raw&gt; &lt;erl-status&gt; &lt;js-status&gt;
 //!     Normalises both raw outputs, prints the report, and exits 0 iff the
 //!     verdict is MATCH (or iff MISMATCH with --interesting). Report format
-//!     is byte-compatible with the old redteam/bin/diff-run.sh so
+//!     is byte-compatible with the old fuzzing/bin/diff-run.sh so
 //!     version-check.sh and smith-campaign.sh keep working untouched.
 //!
 //! The process spawning (gleam/erl/node, temp projects) stays in bash;
@@ -3724,14 +3725,14 @@ mod tests {
 use std::fmt::Write as _;
 use std::process::exit;
 
-use redteam_diff::normalise;
+use fuzzing_core::normaliser::normalise;
 
 fn main() {
     let args: Vec&lt;String&gt; = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("compare") =&gt; compare(&amp;args[2..]),
         _ =&gt; {
-            eprintln!("usage: redteam-diff compare [--interesting] &lt;erl.raw&gt; &lt;js.raw&gt; &lt;erl-status&gt; &lt;js-status&gt;");
+            eprintln!("usage: diff compare [--interesting] &lt;erl.raw&gt; &lt;js.raw&gt; &lt;erl-status&gt; &lt;js-status&gt;");
             exit(2)
         }
     }
@@ -3755,7 +3756,7 @@ fn compare(args: &amp;[String]) -&gt; ! {
         }
     }
     if rest.len() != 4 {
-        eprintln!("usage: redteam-diff compare [--interesting] [--input &lt;path&gt;] &lt;erl.raw&gt; &lt;js.raw&gt; &lt;erl-status&gt; &lt;js-status&gt;");
+        eprintln!("usage: diff compare [--interesting] [--input &lt;path&gt;] &lt;erl.raw&gt; &lt;js.raw&gt; &lt;erl-status&gt; &lt;js-status&gt;");
         exit(2)
     }
     let (erl_raw, js_raw, erl_status, js_status) = (&amp;rest[0], &amp;rest[1], &amp;rest[2], &amp;rest[3]);
@@ -3777,7 +3778,7 @@ fn compare(args: &amp;[String]) -&gt; ! {
     }
 
     let mut report = String::new();
-    let _ = writeln!(report, "=== redteam diff-run ===");
+    let _ = writeln!(report, "=== fuzzing diff-run ===");
     if let Some(input) = &amp;input {
         let _ = writeln!(report, "input:           {input}");
     }
@@ -3838,25 +3839,25 @@ fn raw_diff(erl_raw: &amp;str, js_raw: &amp;str) -&gt; String {
 
   <p>libFuzzer finds crashes. The differential oracle is a separate pass. Running one program at a time is slow. Each program needs two full builds and two runs. So you run the programs in batches. The campaign script is the complete, production version:</p>
 
-  <details><summary><span class="filepath">redteam/bin/smith-campaign.sh (complete)</span> <em>(complete, 63 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/bin/smith-campaign.sh (complete)</span> <em>(complete, 63 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
 #
-# Differential execution campaign: generate gleam-smith programs and run
+# Differential execution campaign: generate fuzzing-core programs and run
 # each on both targets via diff-run.sh. Divergences (or compiler crashes)
-# are kept under redteam/findings/smith/ for triage.
+# are kept under fuzzing/findings/smith/ for triage.
 #
 #   smith-campaign.sh [start-seed] [count]
 #
-# Requires: erl, node, and the workspace built (script builds gleam-smith
+# Requires: erl, node, and the workspace built (script builds fuzzing-core
 # and the gleam CLI itself).
 set -uo pipefail
 
 START="${1:-}"
 COUNT="${2:-50}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." &amp;&amp; pwd)"
-OUT="$ROOT/redteam/findings/smith"
+OUT="$ROOT/fuzzing/findings/smith"
 STATE="$OUT/.next-seed"
 mkdir -p "$OUT"
 
@@ -3876,17 +3877,17 @@ START="${START:-0}"
 PROG_TIMEOUT="${PROG_TIMEOUT:-30}"
 
 echo "[smith-campaign] building generator + compiler (release)..."
-cargo build -q --release --manifest-path "$ROOT/Cargo.toml" -p gleam-smith -p gleam -p redteam-diff
+cargo build -q --release --manifest-path "$ROOT/Cargo.toml" -p fuzzing-core -p gleam
 export GLEAM_BIN="$ROOT/target/release/gleam"
-SMITH="$ROOT/target/release/gleam-smith"
+GEN="$ROOT/target/release/gen"
 
 echo "[smith-campaign] seeds $START..$((START + COUNT - 1)) -&gt; $OUT"
 found=0
 ran=0
 for seed in $(seq "$START" $((START + COUNT - 1))); do
   src="$OUT/.current.gleam"
-  "$SMITH" gen "$seed" &gt; "$src"
-  if timeout "$PROG_TIMEOUT" "$ROOT/redteam/bin/diff-run.sh" --interesting "$src"; then
+  "$GEN" gen "$seed" &gt; "$src"
+  if timeout "$PROG_TIMEOUT" "$ROOT/fuzzing/bin/diff-run.sh" --interesting "$src"; then
     dest="$OUT/seed_$seed.gleam"
     mv "$src" "$dest"
     echo "[smith-campaign] DIVERGENCE seed $seed -&gt; $dest"
@@ -3925,7 +3926,7 @@ echo "[smith-campaign] done: $ran programs, $found divergence(s) kept in $OUT (n
 
   <h3>9.1 The findings journal</h3>
 
-  <p>Every bug gets an entry in <code>redteam/findings.md</code>. Each entry has these parts. The finding number is <code>F-1</code>, <code>F-2</code>, and so on. The minimal repro comes second. The version comes third. The classification comes fourth. The tracker check comes fifth. The classification is the important habit:</p>
+  <p>Every bug gets an entry in <code>fuzzing/findings.md</code>. Each entry has these parts. The finding number is <code>F-1</code>, <code>F-2</code>, and so on. The minimal repro comes second. The version comes third. The classification comes fourth. The tracker check comes fifth. The classification is the important habit:</p>
 
   <ul>
     <li><strong><code>confirmed-new-bug</code></strong>: the bug reproduces against the real CLI. It is novel on the tracker. It is ready to file.</li>
@@ -3939,7 +3940,7 @@ echo "[smith-campaign] done: $ran programs, $found divergence(s) kept in $OUT (n
 
   <p>A bug on unreleased <code>main</code> is an urgent regression. A bug on the current release is serious. It is a different problem. The script <code>version-check.sh</code> answers the question. It builds the released compiler in a throwaway <code>git worktree</code>. It caches the binary. It plays the fixture through the binary. Then it gives a label. <code>REPRODUCES ON &lt;tag&gt;</code> means long-standing. <code>ABSENT ON &lt;tag&gt;</code> means a main-only regression.</p>
 
-  <details><summary><span class="filepath">redteam/bin/version-check.sh (complete)</span> <em>(complete, 127 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/bin/version-check.sh (complete)</span> <em>(complete, 127 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
@@ -3959,7 +3960,7 @@ echo "[smith-campaign] done: $ran programs, $found divergence(s) kept in $OUT (n
 #   - Builds the release compiler in a throwaway `git worktree` (its own
 #     target/ dir); the main checkout's branch and build artifacts are
 #     untouched. The worktree is removed afterwards.
-#   - Caches the release binary at redteam/findings/.bin-cache/&lt;tag&gt;/gleam
+#   - Caches the release binary at fuzzing/findings/.bin-cache/&lt;tag&gt;/gleam
 #     so subsequent checks are instant.
 #   - Runs the fixture through diff-run.sh in a temp project (diff-run's
 #     own WORK dir, removed on exit). No writes to the repo tree or corpus.
@@ -3999,7 +4000,7 @@ if [ -z "$TAG" ]; then
   fi
 fi
 
-CACHE="$ROOT/redteam/findings/.bin-cache/$TAG/gleam"
+CACHE="$ROOT/fuzzing/findings/.bin-cache/$TAG/gleam"
 mkdir -p "$(dirname "$CACHE")"
 
 # --- build the release compiler in a throwaway worktree (cached) ----------
@@ -4035,7 +4036,7 @@ trap 'rm -rf "$RAW_OUT"' EXIT
 
 if [ "$HAS_MAIN" -gt 0 ]; then
   echo "[version-check] running $FIXTURE against $TAG (diff-run, both targets)..."
-  GLEAM_BIN="$CACHE" "$ROOT/redteam/bin/diff-run.sh" "$FIXTURE" &gt;"$RAW_OUT" 2&gt;&amp;1
+  GLEAM_BIN="$CACHE" "$ROOT/fuzzing/bin/diff-run.sh" "$FIXTURE" &gt;"$RAW_OUT" 2&gt;&amp;1
   VERDICT="$(grep -E '^verdict:' "$RAW_OUT" | awk '{print $2}')"
   PANICS="$(grep -c 'Fatal compiler bug' "$RAW_OUT" || true)"
   echo "verdict:   ${VERDICT:-unknown} (MATCH = targets agree, MISMATCH = they differ)"
@@ -4097,12 +4098,12 @@ git bisect run /tmp/check.sh   <span class="cm"># binary-search to the commit</s
 
   <h3>10.1 The infinite loop (complete)</h3>
 
-  <details><summary><span class="filepath">redteam/ops/fuzz-loop.sh (complete)</span> <em>(complete, 50 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/ops/fuzz-loop.sh (complete)</span> <em>(complete, 50 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
 #
-# The continuous fuzzing loop, run by redteam-fuzz.service. Alternates
+# The continuous fuzzing loop, run by fuzzing.service. Alternates
 # bounded sprints of the fuzz targets and processes any crash artifacts
 # after each sprint. Never exits on purpose; systemd restarts it if it
 # ever does.
@@ -4110,20 +4111,20 @@ git bisect run /tmp/check.sh   <span class="cm"># binary-search to the commit</s
 # Sprint lengths are env-tunable (seconds):
 #   SHORT_SPRINT   parse_only          (default 900)
 #   LONG_SPRINT    smith_compile and compile_all_targets (default 3600 each)
-#   SMITH_BATCH    differential-execution batch size     (default 100)
+#   GEN_BATCH    differential-execution batch size     (default 100)
 set -uo pipefail
 
-ROOT="${REDTEAM_ROOT:-$HOME/gleam}"
+ROOT="${FUZZING_ROOT:-$HOME/gleam}"
 cd "$ROOT"
 
 SHORT="${SHORT_SPRINT:-900}"
 LONG="${LONG_SPRINT:-3600}"
-SMITH_BATCH="${SMITH_BATCH:-100}"
+GEN_BATCH="${GEN_BATCH:-100}"
 
 # libFuzzer grows the FIRST corpus dir it is given; extra dirs are
-# read-only seed corpora. The default fuzz/corpus/&lt;target&gt; dir stays the
+# read-only seed corpora. The default fuzzing-harness/corpus/&lt;target&gt; dir stays the
 # growth dir everywhere; curated seeds are copied in or appended after.
-mkdir -p fuzz/corpus/smith_compile
+mkdir -p fuzzing-harness/corpus/smith_compile
 
 echo "[fuzz-loop] starting. root=$ROOT short=${SHORT}s long=${LONG}s"
 
@@ -4131,21 +4132,21 @@ while true; do
   echo "[fuzz-loop] $(date -u +%FT%TZ) parse_only sprint (${SHORT}s)"
   cargo +nightly fuzz run --release parse_only -- \
     -max_total_time="$SHORT" -timeout=10 || true
-  redteam/ops/process-artifacts.sh parse_only || true
+  fuzzing/ops/process-artifacts.sh parse_only || true
 
   echo "[fuzz-loop] $(date -u +%FT%TZ) smith_compile sprint (${LONG}s)"
   cargo +nightly fuzz run --release smith_compile \
-    fuzz/corpus/smith_compile redteam/fuzz-seeds/smith_compile -- \
+    fuzzing-harness/corpus/smith_compile fuzzing/fuzz-seeds/smith_compile -- \
     -max_total_time="$LONG" -timeout=25 || true
-  redteam/ops/process-artifacts.sh smith_compile || true
+  fuzzing/ops/process-artifacts.sh smith_compile || true
 
   echo "[fuzz-loop] $(date -u +%FT%TZ) compile_all_targets sprint (${LONG}s)"
   cargo +nightly fuzz run --release compile_all_targets -- \
     -max_total_time="$LONG" -timeout=25 || true
-  redteam/ops/process-artifacts.sh compile_all_targets || true
+  fuzzing/ops/process-artifacts.sh compile_all_targets || true
 
-  echo "[fuzz-loop] $(date -u +%FT%TZ) differential execution batch (${SMITH_BATCH} programs)"
-  redteam/bin/smith-campaign.sh "" "$SMITH_BATCH" || true
+  echo "[fuzz-loop] $(date -u +%FT%TZ) differential execution batch (${GEN_BATCH} programs)"
+  fuzzing/bin/smith-campaign.sh "" "$GEN_BATCH" || true
 done
 </pre>
 </details>
@@ -4154,7 +4155,7 @@ done
 
   <h3>10.2 Artifact collection (complete)</h3>
 
-  <span class="filepath">redteam/ops/process-artifacts.sh (complete)</span>
+  <span class="filepath">fuzzing/ops/process-artifacts.sh (complete)</span>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
@@ -4166,12 +4167,12 @@ done
 #
 # New artifacts land in $HOME/findings/inbox/&lt;target&gt;/&lt;sha256&gt; and are
 # announced in $HOME/findings/NEW.log. Triage (replay, minimize via
-# treereduce, classify into redteam/findings.md) is a manual step.
+# treereduce, classify into fuzzing/findings.md) is a manual step.
 set -uo pipefail
 
 TARGET="${1:?usage: process-artifacts.sh &lt;fuzz-target-name&gt;}"
-ROOT="${REDTEAM_ROOT:-$HOME/gleam}"
-ART="$ROOT/fuzz/artifacts/$TARGET"
+ROOT="${FUZZING_ROOT:-$HOME/gleam}"
+ART="$ROOT/fuzzing-harness/artifacts/$TARGET"
 INBOX="$HOME/findings/inbox/$TARGET"
 
 mkdir -p "$INBOX"
@@ -4196,13 +4197,13 @@ exit 0
 
   <h3>10.3 The daily sync (complete)</h3>
 
-  <details><summary><span class="filepath">redteam/ops/sync-job.sh (complete)</span> <em>(complete, 58 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/ops/sync-job.sh (complete)</span> <em>(complete, 58 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
 #
-# Daily maintenance, run by redteam-sync.timer:
-#   1. update the checkout to the latest red-team branch
+# Daily maintenance, run by fuzzing-sync.timer:
+#   1. update the checkout to the latest fuzzing branch
 #   2. rebuild the fuzz targets (so the fuzzer tests the latest harness)
 #   3. minimize the on-box fuzzing corpus (keeps it lean; corpus persists
 #      on disk — it is the accumulated coverage intelligence)
@@ -4212,13 +4213,13 @@ exit 0
 # write-capable deploy key for the repo.
 set -uo pipefail
 
-ROOT="${REDTEAM_ROOT:-$HOME/gleam}"
+ROOT="${FUZZING_ROOT:-$HOME/gleam}"
 cd "$ROOT"
 
 echo "[sync] $(date -u +%FT%TZ) updating checkout"
 git fetch origin
-git checkout red-team
-git reset --hard origin/red-team
+git checkout fuzzing
+git reset --hard origin/fuzzing
 
 echo "[sync] rebuilding fuzz targets (release profile: speed + debug checks)"
 if ! cargo +nightly fuzz build --release; then
@@ -4227,8 +4228,8 @@ if ! cargo +nightly fuzz build --release; then
 fi
 
 echo "[sync] refreshing seed corpus"
-mkdir -p fuzz/corpus/compile_all_targets
-cp redteam/corpus/*.gleam fuzz/corpus/compile_all_targets/
+mkdir -p fuzzing-harness/corpus/compile_all_targets
+cp fuzzing/corpus/*.gleam fuzzing-harness/corpus/compile_all_targets/
 
 echo "[sync] minimizing corpora"
 cargo +nightly fuzz cmin parse_only || true
@@ -4236,13 +4237,13 @@ cargo +nightly fuzz cmin compile_all_targets || true
 
 if [ "${CORPUS_GIT_SYNC:-0}" = "1" ]; then
   echo "[sync] committing corpus"
-  git add fuzz/corpus || true
+  git add fuzzing-harness/corpus || true
   if ! git diff --cached --quiet; then
-    git -c user.name=redteam-bot -c user.email=redteam-bot@localhost \
+    git -c user.name=fuzzing-bot -c user.email=fuzzing-bot@localhost \
       commit -m "corpus: minimize and merge $(date -u +%F)"
     git fetch origin
-    git rebase origin/red-team || git rebase --abort
-    git push origin red-team || echo "[sync] push failed (deploy key?)"
+    git rebase origin/fuzzing || git rebase --abort
+    git push origin fuzzing || echo "[sync] push failed (deploy key?)"
   else
     echo "[sync] corpus unchanged"
   fi
@@ -4252,20 +4253,20 @@ echo "[sync] done"
 
 # Script/harness changes only take effect in the fuzz loop after a restart.
 # The sudoers rule installed by install-systemd.sh permits exactly this.
-sudo -n systemctl restart redteam-fuzz.service 2&gt;/dev/null \
-  || echo "[sync] could not restart redteam-fuzz (needs root or the sudoers rule)"
+sudo -n systemctl restart fuzzing.service 2&gt;/dev/null \
+  || echo "[sync] could not restart fuzzing (needs root or the sudoers rule)"
 </pre>
 </details>
 
   <h3>10.4 The systemd units (complete installer)</h3>
 
-  <details><summary><span class="filepath">redteam/ops/install-systemd.sh (complete)</span> <em>(complete, 77 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/ops/install-systemd.sh (complete)</span> <em>(complete, 77 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
 #
-# Generate and install the systemd units for continuous red teaming.
-# Called by setup.sh (which supplies REDTEAM_USER and HOME_DIR); can be
+# Generate and install the systemd units for continuous fuzzing.
+# Called by setup.sh (which supplies FUZZING_USER and HOME_DIR); can be
 # re-run standalone as root after changing unit definitions.
 set -euo pipefail
 
@@ -4273,13 +4274,13 @@ if [ "$(id -u)" -ne 0 ]; then
   echo "error: install-systemd.sh must run as root" &gt;&amp;2
   exit 1
 fi
-U="${REDTEAM_USER:?REDTEAM_USER required}"
+U="${FUZZING_USER:?FUZZING_USER required}"
 H="${HOME_DIR:?HOME_DIR required}"
 G="$H/gleam"
 
-cat &gt; /etc/systemd/system/redteam-fuzz.service &lt;&lt;EOF
+cat &gt; /etc/systemd/system/fuzzing.service &lt;&lt;EOF
 [Unit]
-Description=Gleam compiler red team: continuous fuzzing
+Description=Gleam compiler fuzzing: continuous fuzzing
 After=network-online.target
 
 [Service]
@@ -4288,7 +4289,7 @@ User=$U
 Environment=HOME=$H
 Environment=PATH=$H/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=$G
-ExecStart=$G/redteam/ops/fuzz-loop.sh
+ExecStart=$G/fuzzing/ops/fuzz-loop.sh
 Restart=always
 RestartSec=30
 Nice=10
@@ -4299,9 +4300,9 @@ OOMScoreAdjust=500
 WantedBy=multi-user.target
 EOF
 
-cat &gt; /etc/systemd/system/redteam-sync.service &lt;&lt;EOF
+cat &gt; /etc/systemd/system/fuzzing-sync.service &lt;&lt;EOF
 [Unit]
-Description=Gleam compiler red team: daily update, rebuild, corpus maintenance
+Description=Gleam compiler fuzzing: daily update, rebuild, corpus maintenance
 
 [Service]
 Type=oneshot
@@ -4309,12 +4310,12 @@ User=$U
 Environment=HOME=$H
 Environment=PATH=$H/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=$G
-ExecStart=$G/redteam/ops/sync-job.sh
+ExecStart=$G/fuzzing/ops/sync-job.sh
 EOF
 
-cat &gt; /etc/systemd/system/redteam-sync.timer &lt;&lt;EOF
+cat &gt; /etc/systemd/system/fuzzing-sync.timer &lt;&lt;EOF
 [Unit]
-Description=Gleam compiler red team: daily sync
+Description=Gleam compiler fuzzing: daily sync
 
 [Timer]
 OnCalendar=*-*-* 04:00:00
@@ -4325,51 +4326,51 @@ WantedBy=timers.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now redteam-fuzz.service
-systemctl enable --now redteam-sync.timer
+systemctl enable --now fuzzing.service
+systemctl enable --now fuzzing-sync.timer
 
-# Allow the sync job (running as the redteam user) to restart exactly the
+# Allow the sync job (running as the fuzzing user) to restart exactly the
 # fuzz service after updates — nothing else.
-cat &gt; /etc/sudoers.d/redteam-fuzz-restart &lt;&lt;EOF
-$U ALL=(root) NOPASSWD: /usr/bin/systemctl restart redteam-fuzz.service
+cat &gt; /etc/sudoers.d/fuzzing-restart &lt;&lt;EOF
+$U ALL=(root) NOPASSWD: /usr/bin/systemctl restart fuzzing.service
 EOF
-chmod 440 /etc/sudoers.d/redteam-fuzz-restart
+chmod 440 /etc/sudoers.d/fuzzing-restart
 
-echo "systemd units installed: redteam-fuzz.service, redteam-sync.timer"
+echo "systemd units installed: fuzzing.service, fuzzing-sync.timer"
 </pre>
 </details>
 
-  <p>Three settings matter. <code>Restart=always</code> makes the service self-healing. <code>Nice=10</code> stops the service from starving real workloads. <code>OOMScoreAdjust=500</code> makes the fuzzer die first. A red-teaming box shares resources with production. It must never crash the production box.</p>
+  <p>Three settings matter. <code>Restart=always</code> makes the service self-healing. <code>Nice=10</code> stops the service from starving real workloads. <code>OOMScoreAdjust=500</code> makes the fuzzer die first. A fuzzing box shares resources with production. It must never crash the production box.</p>
 
   <h3>10.5 One-command provisioning (complete)</h3>
 
-  <details><summary><span class="filepath">redteam/ops/setup.sh (complete)</span> <em>(complete, 94 lines — click to expand)</em></summary>
+  <details><summary><span class="filepath">fuzzing/ops/setup.sh (complete)</span> <em>(complete, 94 lines — click to expand)</em></summary>
 <pre>#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 The Gleam contributors
 #
 # Provision a bare-metal VPS (Ubuntu/Debian, systemd) for continuous
-# Gleam compiler red teaming. Idempotent — safe to re-run.
+# Gleam compiler fuzzing. Idempotent — safe to re-run.
 #
-#   curl -fsSL https://raw.githubusercontent.com/daniellionel01/gleam/red-team/redteam/ops/setup.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/daniellionel01/gleam/fuzzing/fuzzing/ops/setup.sh | sudo bash
 #
 # or from a checkout:
 #
-#   sudo redteam/ops/setup.sh
+#   sudo fuzzing/ops/setup.sh
 #
 # Environment overrides:
-#   REDTEAM_USER   user to run campaigns as        (default: redteam)
+#   FUZZING_USER   user to run campaigns as        (default: fuzzing)
 #   REPO_URL       fork to clone                   (default: github.com/daniellionel01/gleam)
-#   BRANCH         branch to track                 (default: red-team)
+#   BRANCH         branch to track                 (default: fuzzing)
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
-  exec sudo --preserve-env=REDTEAM_USER,REPO_URL,BRANCH bash "$0" "$@"
+  exec sudo --preserve-env=FUZZING_USER,REPO_URL,BRANCH bash "$0" "$@"
 fi
 
-REDTEAM_USER="${REDTEAM_USER:-redteam}"
+FUZZING_USER="${FUZZING_USER:-fuzzing}"
 REPO_URL="${REPO_URL:-https://github.com/daniellionel01/gleam.git}"
-BRANCH="${BRANCH:-red-team}"
+BRANCH="${BRANCH:-fuzzing}"
 
 echo "==&gt; [1/7] system packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -4385,11 +4386,11 @@ if ! command -v node &gt;/dev/null 2&gt;&amp;1 || [ "$(node --version | sed 's/^
 fi
 node --version
 
-echo "==&gt; [3/7] user: $REDTEAM_USER"
-if ! id "$REDTEAM_USER" &gt;/dev/null 2&gt;&amp;1; then
-  useradd --create-home --shell /bin/bash "$REDTEAM_USER"
+echo "==&gt; [3/7] user: $FUZZING_USER"
+if ! id "$FUZZING_USER" &gt;/dev/null 2&gt;&amp;1; then
+  useradd --create-home --shell /bin/bash "$FUZZING_USER"
 fi
-HOME_DIR="$(getent passwd "$REDTEAM_USER" | cut -d: -f6)"
+HOME_DIR="$(getent passwd "$FUZZING_USER" | cut -d: -f6)"
 
 echo "==&gt; [4/7] swap (fuzz builds are memory-hungry on small boxes)"
 if [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 3500 ] &amp;&amp; ! swapon --show --noheadings | grep -q .; then
@@ -4404,7 +4405,7 @@ else
 fi
 
 echo "==&gt; [5/7] rust toolchains + cargo-fuzz"
-sudo -u "$REDTEAM_USER" bash &lt;&lt;'EOF'
+sudo -u "$FUZZING_USER" bash &lt;&lt;'EOF'
 set -euo pipefail
 if ! command -v rustup &gt;/dev/null 2&gt;&amp;1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal &gt;/dev/null
@@ -4419,28 +4420,28 @@ EOF
 
 echo "==&gt; [6/7] repository ($REPO_URL @ $BRANCH)"
 if [ ! -d "$HOME_DIR/gleam/.git" ]; then
-  sudo -u "$REDTEAM_USER" git clone --branch "$BRANCH" "$REPO_URL" "$HOME_DIR/gleam"
+  sudo -u "$FUZZING_USER" git clone --branch "$BRANCH" "$REPO_URL" "$HOME_DIR/gleam"
 else
-  sudo -u "$REDTEAM_USER" git -C "$HOME_DIR/gleam" fetch origin
-  sudo -u "$REDTEAM_USER" git -C "$HOME_DIR/gleam" checkout "$BRANCH"
-  sudo -u "$REDTEAM_USER" git -C "$HOME_DIR/gleam" reset --hard "origin/$BRANCH"
+  sudo -u "$FUZZING_USER" git -C "$HOME_DIR/gleam" fetch origin
+  sudo -u "$FUZZING_USER" git -C "$HOME_DIR/gleam" checkout "$BRANCH"
+  sudo -u "$FUZZING_USER" git -C "$HOME_DIR/gleam" reset --hard "origin/$BRANCH"
 fi
 
 echo "==&gt; [7/7] fuzz target build + systemd units"
-sudo -u "$REDTEAM_USER" bash -c '. "$HOME/.cargo/env" &amp;&amp; cd "$HOME/gleam" &amp;&amp; cargo +nightly fuzz build'
-sudo -u "$REDTEAM_USER" bash -c 'cd "$HOME/gleam" &amp;&amp; mkdir -p fuzz/corpus/compile_all_targets &amp;&amp; cp redteam/corpus/*.gleam fuzz/corpus/compile_all_targets/'
-REDTEAM_USER="$REDTEAM_USER" HOME_DIR="$HOME_DIR" \
-  "$HOME_DIR/gleam/redteam/ops/install-systemd.sh"
+sudo -u "$FUZZING_USER" bash -c '. "$HOME/.cargo/env" &amp;&amp; cd "$HOME/gleam" &amp;&amp; cargo +nightly fuzz build'
+sudo -u "$FUZZING_USER" bash -c 'cd "$HOME/gleam" &amp;&amp; mkdir -p fuzzing-harness/corpus/compile_all_targets &amp;&amp; cp fuzzing/corpus/*.gleam fuzzing-harness/corpus/compile_all_targets/'
+FUZZING_USER="$FUZZING_USER" HOME_DIR="$HOME_DIR" \
+  "$HOME_DIR/gleam/fuzzing/ops/install-systemd.sh"
 
 echo ""
 echo "Setup complete."
-echo "  fuzzing:  systemctl status redteam-fuzz    (logs: journalctl -u redteam-fuzz -f)"
-echo "  daily:    systemctl list-timers redteam-sync.timer"
+echo "  fuzzing:  systemctl status fuzzing    (logs: journalctl -u fuzzing -f)"
+echo "  daily:    systemctl list-timers fuzzing-sync.timer"
 echo "  findings: $HOME_DIR/findings/"
 </pre>
 </details>
 
-  <p>This script provisions a bare Debian/Ubuntu box end to end: packages, Node, the <code>redteam</code> user, swap, Rust nightly, cargo-fuzz, the repository clone, and the systemd units.</p>
+  <p>This script provisions a bare Debian/Ubuntu box end to end: packages, Node, the <code>fuzzing</code> user, swap, Rust nightly, cargo-fuzz, the repository clone, and the systemd units.</p>
 </section>
 <section class="chapter" id="lessons">
   <h2 class="chapter-title">11. Lessons learned, and where the cleverness hurts</h2>
@@ -4449,7 +4450,7 @@ echo "  findings: $HOME_DIR/findings/"
 
   <h3>11.1 Keep the fuzzing code outside the compiler</h3>
 
-  <p>This is the newest lesson. The first version of this project lived inside <code>compiler-core</code>. It caused a merge-conflict surface of 15 files. Nothing about it needed to be inside. The rewrite moved it to <code>redteam/probe</code>, an external crate on the public API. <code>git diff main..red-team -- compiler-core/</code> is empty. The rule is simple. If a fuzzer change touches the compiler, stop and ask whether it can call the public API instead. Almost always it can.</p>
+  <p>This is the newest lesson. The first version of this project lived inside <code>compiler-core</code>. It caused a merge-conflict surface of 15 files. Nothing about it needed to be inside. The rewrite moved it to the <code>probe</code> module of <code>fuzzing-core</code>, an external crate on the public API. <code>git diff main..fuzzing -- compiler-core/</code> is empty. The rule is simple. If a fuzzer change touches the compiler, stop and ask whether it can call the public API instead. Almost always it can.</p>
 
   <h3>11.2 What I will build simpler if I start over</h3>
 
@@ -4508,7 +4509,7 @@ echo "  findings: $HOME_DIR/findings/"
 </section></main>
 
 <footer>
-  <p>This page is a companion to the <code>redteam/</code> red-teaming campaign in the Gleam compiler repository. Everything described is implemented and running there. The code blocks are read verbatim from the repository, so what you copy is exactly what runs.</p>
+  <p>This page is a companion to the fuzzing campaign in the Gleam compiler repository. Everything described is implemented and running there. The code blocks are read verbatim from the repository, so what you copy is exactly what runs.</p>
 </footer>
 
 <script>
