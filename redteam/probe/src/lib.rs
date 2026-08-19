@@ -239,3 +239,57 @@ fn analyse(src: &str, target: Target) -> Option<(TypedModule, LineNumbers)> {
         Outcome::PartialFailure(..) | Outcome::TotalFailure(_) => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn compiled(src: &str) -> bool {
+        matches!(probe_source(src), ProbeOutcome::Compiled { .. })
+    }
+
+    #[test]
+    fn valid_program_compiles_all_targets() {
+        assert!(compiled("pub fn main() { 1 }"));
+        assert!(compiled(
+            "pub fn main() {\n  let f = fn(x) { x + 1 }\n  f(41)\n}\n"
+        ));
+    }
+
+    #[test]
+    fn invalid_programs_are_rejected_not_panicked() {
+        // Parser rejection (semicolon is not valid Gleam)
+        assert_eq!(
+            probe_source("pub fn main() { let f = fn(x) { x + 1 }; f(41) }"),
+            ProbeOutcome::ParseError
+        );
+        // Unclosed brace
+        assert_eq!(probe_source("pub fn main() {"), ProbeOutcome::ParseError);
+        // Type error: int +. string
+        assert_eq!(
+            probe_source("pub fn main() { 1 +. \"x\" }"),
+            ProbeOutcome::AnalysisRejected {
+                target: "javascript"
+            }
+        );
+    }
+
+    #[test]
+    fn binary_inputs_are_handled() {
+        // Not valid UTF-8
+        assert_eq!(probe_bytes(&[0xff, 0xfe, 0xfd]), ProbeOutcome::NotUtf8);
+        // Empty input is a valid (empty) module, same as the real compiler
+        assert!(matches!(probe_bytes(&[]), ProbeOutcome::Compiled { .. }));
+        // Oversized input is refused early
+        let big = vec![b'a'; MAX_INPUT_BYTES + 1];
+        assert_eq!(probe_bytes(&big), ProbeOutcome::InputTooLarge);
+        assert_eq!(probe_parse_bytes(&big), ProbeOutcome::InputTooLarge);
+    }
+
+    #[test]
+    fn guarded_probe_catches_panics_as_evidence() {
+        // Even a pathological input must not kill the harness.
+        let out = probe_guarded(b"pub fn main() { ");
+        assert!(out.is_ok());
+    }
+}
