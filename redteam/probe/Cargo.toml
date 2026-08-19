@@ -1,0 +1,16 @@
+[package]
+name = "redteam-probe"
+description = "Red team probing surface for the Gleam compiler, driven externally via public API only"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+gleam-core = { path = "../../compiler-core" }
+src-span = { path = "../../src-span" }
+camino.workspace = true
+ecow.workspace = true
+im.workspace = true

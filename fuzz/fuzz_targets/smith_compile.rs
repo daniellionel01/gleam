@@ -27,8 +27,8 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
     let src = module.to_source();
-    match gleam_core::redteam::probe_source(&src) {
-        gleam_core::redteam::ProbeOutcome::Compiled { .. } => {}
+    match redteam_probe::probe_source(&src) {
+        redteam_probe::ProbeOutcome::Compiled { .. } => {}
         other => panic!("gleam-smith generated non-compiling program ({other}):\n{src}"),
     }
 });

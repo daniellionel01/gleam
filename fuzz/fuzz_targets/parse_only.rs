@@ -9,5 +9,5 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let _ = gleam_core::redteam::probe_parse_bytes(data);
+    let _ = redteam_probe::probe_parse_bytes(data);
 });

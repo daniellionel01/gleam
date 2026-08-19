@@ -2219,7 +2219,7 @@ fn push_indent(out: &mut String, ind: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gleam_core::redteam::ProbeOutcome;
+    use redteam_probe::ProbeOutcome;
 
     #[test]
     fn determinism() {
@@ -2242,13 +2242,13 @@ mod tests {
         let module = Module::arbitrary(&mut u).expect("artifact decodes");
         let src = module.to_source();
         println!("--- generated source:\n{src}");
-        match gleam_core::redteam::probe_guarded(src.as_bytes()) {
+        match redteam_probe::probe_guarded(src.as_bytes()) {
             Ok(outcome) => println!("--- outcome: {outcome}"),
             Err(panic) => {
                 println!("--- guarded panic: {panic}");
                 println!(
                     "--- known bug? {}",
-                    gleam_core::redteam::is_known_compiler_bug(&panic)
+                    redteam_probe::is_known_compiler_bug(&panic)
                 );
             }
         }
@@ -2262,12 +2262,12 @@ mod tests {
         for seed in 0..300u64 {
             let module = Module::from_seed(seed);
             let src = module.to_source();
-            match gleam_core::redteam::probe_guarded(src.as_bytes()) {
+            match redteam_probe::probe_guarded(src.as_bytes()) {
                 Ok(ProbeOutcome::Compiled { .. }) => {}
                 Ok(outcome) => panic!(
                     "seed {seed} produced non-compiling program (outcome: {outcome}):\n{src}"
                 ),
-                Err(panic) if gleam_core::redteam::is_known_compiler_bug(&panic) => {
+                Err(panic) if redteam_probe::is_known_compiler_bug(&panic) => {
                     eprintln!("seed {seed}: known compiler bug ({panic}), tolerated");
                 }
                 Err(panic) => {

@@ -1390,7 +1390,7 @@ name = "gleam-smith"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
- "gleam-core",
+ "redteam-probe",
 ]
 
 [[package]]
@@ -2851,6 +2851,17 @@ name = "redteam-diff"
 version = "0.1.0"
 dependencies = [
  "regex",
+]
+
+[[package]]
+name = "redteam-probe"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "ecow",
+ "gleam-core",
+ "im",
+ "src-span",
 ]
 
 [[package]]

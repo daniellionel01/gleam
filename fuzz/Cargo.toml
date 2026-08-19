@@ -17,8 +17,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-gleam-core = { path = "../compiler-core" }
 gleam-smith = { path = "../redteam/smith" }
+redteam-probe = { path = "../redteam/probe" }
 
 # Prevent the fuzzer from spending cycles on its own instrumentation-heavy
 # deps being optimised; keep the build reproducible across runs.

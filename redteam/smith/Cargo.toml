@@ -13,4 +13,4 @@ description = "Deterministic type-directed Gleam program generator for compiler 
 arbitrary = "1"
 
 [dev-dependencies]
-gleam-core = { path = "../../compiler-core" }
+redteam-probe = { path = "../probe" }
