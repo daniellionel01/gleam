@@ -1,8 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 The Gleam contributors
+
+//! Deterministic type-directed generator of well-typed Gleam programs.
+//!
+//! Gleam-smith grows a random Gleam module from a seed (wasm-smith style).
+//! The module is well-typed by construction, so it can be handed to the
+//! real compiler. Raw seed bytes come from the fuzzer (`Unstructured`);
+//! `Module::from_seed` turns a plain integer seed into the same byte
+//! stream for the CLI and for the tests.
+
 use arbitrary::{Arbitrary, Result, Unstructured};
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Ty {
@@ -35,9 +44,7 @@ struct FnSig {
     ret: Ty,
 }
 
-// ---------------------------------------------------------------------------
 // AST
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 enum Expr {
@@ -189,7 +196,6 @@ pub struct Module {
     main: Vec<Stmt>,
 }
 
-// ---------------------------------------------------------------------------
 // Name pools (hostile on purpose: JS/Erlang reserved words and prelude
 // names, to exercise codegen hygiene — bug class 2 in redteam/README.md)
 
@@ -254,9 +260,15 @@ const INT_POOL: &[i64] = &[0, 1, 2, 3, 4, 5, 7, 10, 42, 100];
 /// Float literals — whole values (0.0, 1.0, …) expose the cross-target
 /// echo-formatting divergence (Erlang prints `1.0`, JS prints `1`);
 /// fractional values (0.1, 1.5, …) exercise IEEE-754 arithmetic edges.
+///
+/// `3.14` is a deliberate literal: the generated program must print
+/// exactly `3.14`, not PI to 15 digits.
+#[expect(
+    clippy::approx_constant,
+    reason = "the generated Gleam must render the literal 3.14, not the constant PI"
+)]
 const FLOAT_POOL: &[f64] = &[0.0, 1.0, 2.0, 0.5, 1.5, 3.14, 100.0, 0.1, 0.25, 10.0];
 
-// ---------------------------------------------------------------------------
 // Generation context
 
 type Env = Vec<(String, Ty)>;
@@ -279,10 +291,6 @@ impl Ctx {
         let n = format!("v{}", self.counter);
         self.counter += 1;
         n
-    }
-
-    fn ty_name(&self, k: usize) -> &str {
-        &self.types[k].name
     }
 
     /// Choose a name from the env to shadow.
@@ -316,7 +324,6 @@ fn roll(u: &mut Unstructured<'_>, weights: &[(u32, usize)]) -> Result<usize> {
     Ok(weights.last().expect("nonempty weights").1)
 }
 
-// ---------------------------------------------------------------------------
 // Module generation
 
 /// Binding discipline for one subject position of a clause: `Free` means
@@ -337,7 +344,7 @@ impl<'a> Arbitrary<'a> for Module {
             counter: 0,
         };
 
-        // -- custom types ---------------------------------------------------
+        // custom types
         let type_count = roll(u, &[(25, 0), (35, 1), (25, 2), (15, 3)])?;
         let mut used_type_names: Vec<String> = Vec::new();
         let mut used_ctor_names: Vec<String> = Vec::new();
@@ -402,7 +409,7 @@ impl<'a> Arbitrary<'a> for Module {
             ctx.types.push(CustomType { name, ctors });
         }
 
-        // -- recursion helper ------------------------------------------------
+        // recursion helper
         let helper: Option<&'static str> = if chance(u, 50)? {
             let name = pick(u, &["spin", "walk"][..])?;
             let (params, ret) = if *name == "spin" {
@@ -429,7 +436,7 @@ impl<'a> Arbitrary<'a> for Module {
             None
         };
 
-        // -- functions --------------------------------------------------------
+        // functions
         let fn_count = u.int_in_range(1..=3)?;
         let mut functions: Vec<(FnSig, Expr)> = Vec::new();
         let mut used_fn_names: Vec<String> = ctx.fns.iter().map(|f| f.name.clone()).collect();
@@ -469,7 +476,7 @@ impl<'a> Arbitrary<'a> for Module {
             functions.push((sig, body));
         }
 
-        // -- constants -------------------------------------------------------
+        // constants
         let const_count = u.int_in_range(0..=3)?;
         let mut constants: Vec<(String, Ty, Expr)> = Vec::new();
         let mut used_const_names: Vec<String> = Vec::new();
@@ -486,12 +493,11 @@ impl<'a> Arbitrary<'a> for Module {
                     break cand;
                 }
             };
-            let empty: Env = Vec::new();
-            let cval = gen_base(u, &mut ctx, &empty, &cty)?;
+            let cval = gen_base(u, &mut ctx, &cty)?;
             constants.push((cname, cty, cval));
         }
 
-        // -- main -------------------------------------------------------------
+        // main
         let mut main: Vec<Stmt> = Vec::new();
         let mut env: Env = Vec::new();
         for (name, ty, _) in &constants {
@@ -553,7 +559,6 @@ fn gen_any_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
     })
 }
 
-// ---------------------------------------------------------------------------
 // Expression generation
 
 fn gen_expr(
@@ -566,7 +571,7 @@ fn gen_expr(
     // BitArray only ever appears as a case subject (never echoed, never a
     // fn param/return), so a literal is the only sensible producer.
     if matches!(ty, Ty::BitArray) {
-        return gen_base(u, ctx, env, ty);
+        return gen_base(u, ctx, ty);
     }
     // Find variables in scope of the required type.
     let vars_of_ty: Vec<&String> = env
@@ -578,7 +583,7 @@ fn gen_expr(
         if !vars_of_ty.is_empty() && chance(u, 50)? {
             return Ok(Expr::Var(pick(u, &vars_of_ty)?.to_string()));
         }
-        return gen_base(u, ctx, env, ty);
+        return gen_base(u, ctx, ty);
     }
 
     let can_call = ctx.fns.iter().any(|f| f.ret == *ty);
@@ -604,7 +609,7 @@ fn gen_expr(
             if !vars_of_ty.is_empty() && chance(u, 40)? {
                 Ok(Expr::Var(pick(u, &vars_of_ty)?.to_string()))
             } else {
-                gen_base(u, ctx, env, ty)
+                gen_base(u, ctx, ty)
             }
         }
         1 => gen_binop(u, ctx, env, ty, depth),
@@ -672,7 +677,7 @@ fn gen_expr(
                 let pname = ctx.fresh();
                 env_push(&mut anon_env, pname.clone(), pty.clone());
                 params.push(pname);
-                args.push(gen_base(u, ctx, env, &pty)?);
+                args.push(gen_base(u, ctx, &pty)?);
             }
             let body = gen_expr(u, ctx, &anon_env, ty, depth - 1)?;
             Ok(Expr::ApplyAnon {
@@ -684,11 +689,11 @@ fn gen_expr(
     }
 }
 
-fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty) -> Result<Expr> {
+fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, ty: &Ty) -> Result<Expr> {
     Ok(match ty {
         Ty::Int => Expr::IntLit(*pick(u, INT_POOL)?),
         Ty::Float => Expr::FloatLit(*pick(u, FLOAT_POOL)?),
-        Ty::Str => Expr::StrLit(*pick(u, STR_POOL)?),
+        Ty::Str => Expr::StrLit(pick(u, STR_POOL)?),
         Ty::Bool => Expr::BoolLit(chance(u, 50)?),
         Ty::BitArray => gen_bit_array(u)?,
         Ty::ListInt => {
@@ -700,14 +705,14 @@ fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, env: &Env, ty: &Ty) -> Resu
             Expr::ListLit(elems)
         }
         Ty::Tup(a, b) => Expr::TupLit(
-            Box::new(gen_base(u, ctx, env, a)?),
-            Box::new(gen_base(u, ctx, env, b)?),
+            Box::new(gen_base(u, ctx, a)?),
+            Box::new(gen_base(u, ctx, b)?),
         ),
         Ty::Custom(k) => {
             let ctor = pick(u, &ctx.types[*k].ctors)?.clone();
             let mut args = Vec::new();
             for (_, fty) in &ctor.fields {
-                args.push(gen_base(u, ctx, env, fty)?);
+                args.push(gen_base(u, ctx, fty)?);
             }
             Expr::Call {
                 name: ctor.name.clone(),
@@ -804,7 +809,7 @@ fn gen_bit_pattern(
         let seg = if n == 1 {
             match roll(u, &[(30, 0), (25, 1), (35, 2), (10, 4)])? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
-                1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
+                1 => BitSegPat::Utf8Lit(pick(u, STR_POOL)?),
                 2 => BitSegPat::Utf8Wild, // F-12 trigger
                 _ => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
             }
@@ -824,7 +829,7 @@ fn gen_bit_pattern(
                 ],
             )? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
-                1 => BitSegPat::Utf8Lit(*pick(u, STR_POOL)?),
+                1 => BitSegPat::Utf8Lit(pick(u, STR_POOL)?),
                 2 => BitSegPat::Utf8Wild, // F-12 trigger
                 3 if !bound_one => {
                     bound_one = true;
@@ -853,6 +858,10 @@ fn gen_bit_pattern(
     Ok(Pattern::Bits(segs))
 }
 
+#[expect(
+    clippy::approx_constant,
+    reason = "the divisor pool keeps 3.14 as a literal so generated Gleam prints 3.14"
+)]
 fn gen_binop(
     u: &mut Unstructured<'_>,
     ctx: &mut Ctx,
@@ -968,7 +977,7 @@ fn gen_binop(
                 )
             }
         },
-        _ => gen_base(u, ctx, env, ty)?,
+        _ => gen_base(u, ctx, ty)?,
     })
 }
 
@@ -986,7 +995,7 @@ fn gen_call(
         .cloned()
         .collect();
     if candidates.is_empty() {
-        return gen_base(u, ctx, env, ty);
+        return gen_base(u, ctx, ty);
     }
     let sig = pick(u, &candidates)?.clone();
     let mut args = Vec::new();
@@ -999,7 +1008,6 @@ fn gen_call(
     })
 }
 
-// ---------------------------------------------------------------------------
 // Case generation (the hot zone: decision trees, prefixes, guards, aliases)
 
 fn gen_case_expr(
@@ -1027,7 +1035,6 @@ fn gen_case_expr(
     for i in 0..clause_count {
         let is_last = i == clause_count - 1;
         // Alternative patterns only for single-subject cases.
-        // Alternative patterns only for single-subject cases.
         // F-7/F-8/F-9 suppression: NO alternatives on list subjects — the
         // Erlang decision-tree compiler loses variable registrations for
         // alternative list patterns following other list clauses.
@@ -1053,7 +1060,6 @@ fn gen_case_expr(
                 &mut bound,
                 &bind_spec,
                 sty,
-                1,
                 &mut used_int_lits,
                 &mut used_str_lits,
                 &mut used_ctors,
@@ -1232,7 +1238,10 @@ fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "pattern construction threads the generation state plus the per-clause name-uniqueness pools"
+)]
 fn gen_pattern(
     u: &mut Unstructured<'_>,
     ctx: &mut Ctx,
@@ -1240,7 +1249,6 @@ fn gen_pattern(
     bound: &mut Vec<(String, Ty)>,
     spec: &BindSpec,
     ty: &Ty,
-    depth: u8,
     used_ints: &mut Vec<u32>,
     used_strs: &mut Vec<&'static str>,
     used_ctors: &mut Vec<String>,
@@ -1249,7 +1257,7 @@ fn gen_pattern(
 ) -> Result<Pattern> {
     // BindSpec::One requires a binding position of exactly that type.
     if let BindSpec::One(name, bty) = spec {
-        return gen_one_pattern(u, ctx, bound, name, bty, ty, is_last);
+        return gen_one_pattern(u, ctx, bound, name, bty, ty);
     }
 
     let binder = |u: &mut Unstructured<'_>,
@@ -1333,7 +1341,6 @@ fn gen_pattern(
                 bound,
                 &BindSpec::Free,
                 a,
-                depth - 1,
                 used_ints,
                 used_strs,
                 used_ctors,
@@ -1347,7 +1354,6 @@ fn gen_pattern(
                 bound,
                 &BindSpec::Free,
                 b,
-                depth - 1,
                 used_ints,
                 used_strs,
                 used_ctors,
@@ -1367,7 +1373,6 @@ fn gen_pattern(
                         bound,
                         &BindSpec::Free,
                         fty,
-                        depth - 1,
                         used_ints,
                         used_strs,
                         used_ctors,
@@ -1410,7 +1415,6 @@ fn gen_one_pattern(
     name: &str,
     bty: &Ty,
     ty: &Ty,
-    _is_last: bool,
 ) -> Result<Pattern> {
     // Patterns that bind exactly `name` at a position of type `bty`.
     let pat = match (ty, bty) {
@@ -1488,7 +1492,7 @@ fn gen_alt_pattern(
                 elems: vec![Pattern::Var(name.clone())],
                 rest: RestPat::Open,
             }),
-            (Ty::Str, Ty::Str) => Ok(Pattern::Prefix(*pick(u, STR_POOL)?, Some(name.clone()))),
+            (Ty::Str, Ty::Str) => Ok(Pattern::Prefix(pick(u, STR_POOL)?, Some(name.clone()))),
             _ => Ok(Pattern::Var(name.clone())),
         };
     }
@@ -1505,7 +1509,7 @@ fn gen_alt_pattern(
                 used_strs.push(lit);
                 Pattern::StrLit(lit)
             } else {
-                Pattern::Prefix(*pick(u, STR_POOL)?, None)
+                Pattern::Prefix(pick(u, STR_POOL)?, None)
             }
         }
         Ty::Bool => Pattern::BoolLit(chance(u, 50)?),
@@ -1545,30 +1549,27 @@ fn gen_list_pattern(
     bound: &mut Vec<(String, Ty)>,
     _ty: &Ty,
 ) -> Result<Pattern> {
-    let elem = |u: &mut Unstructured<'_>, bound: &mut Vec<(String, Ty)>, ctx: &mut Ctx| match roll(
-        u,
-        &[(40, 0), (35, 1), (25, 2)],
-    ) {
-        Ok(0) => Ok(Pattern::IntLit(u.int_in_range(0..=9)?)),
-        Ok(1) => {
-            let name = if chance(u, 20).unwrap_or(false) {
-                match ctx.pick_shadow_name(u, env).unwrap_or(None) {
-                    Some(n) => n,
-                    None => pick(u, &["a", "b", "h", "x", "constructor"][..])
-                        .unwrap_or(&"a")
-                        .to_string(),
+    let elem = |u: &mut Unstructured<'_>, bound: &mut Vec<(String, Ty)>, ctx: &mut Ctx| {
+        Ok(match roll(u, &[(40, 0), (35, 1), (25, 2)])? {
+            0 => Pattern::IntLit(u.int_in_range(0..=9)?),
+            1 => {
+                let name = if chance(u, 20)? {
+                    match ctx.pick_shadow_name(u, env)? {
+                        Some(n) => n,
+                        None => pick(u, &["a", "b", "h", "x", "constructor"][..])?.to_string(),
+                    }
+                } else {
+                    pick(u, &["a", "b", "h", "x", "constructor"][..])?.to_string()
+                };
+                if bound.iter().any(|(n, _)| *n == name) {
+                    Pattern::Discard
+                } else {
+                    bound.push((name.clone(), Ty::Int));
+                    Pattern::Var(name)
                 }
-            } else {
-                pick(u, &["a", "b", "h", "x", "constructor"][..])?.to_string()
-            };
-            if bound.iter().any(|(n, _)| *n == name) {
-                Ok(Pattern::Discard)
-            } else {
-                bound.push((name.clone(), Ty::Int));
-                Ok(Pattern::Var(name))
             }
-        }
-        _ => Ok(Pattern::Discard),
+            _ => Pattern::Discard,
+        })
     };
     Ok(match roll(u, &[(20, 0), (25, 1), (25, 2), (30, 3)])? {
         0 => Pattern::ListNil,
@@ -1696,7 +1697,6 @@ fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) ->
     }
 }
 
-// ---------------------------------------------------------------------------
 // Rendering
 
 impl Module {
@@ -2043,14 +2043,14 @@ fn write_expr(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
 fn write_clause(out: &mut String, c: &Clause, types: &[CustomType], ind: usize) {
     let last = c.pats.len() - 1;
     for (i, p) in c.pats.iter().enumerate() {
-        write_pattern(out, p, types);
+        write_pattern(out, p);
         if i != last {
             out.push_str(", ");
         }
     }
     for alt in &c.alts {
         out.push_str(" | ");
-        write_pattern(out, alt, types);
+        write_pattern(out, alt);
     }
     if let Some(g) = &c.guard {
         out.push_str(" if ");
@@ -2060,12 +2060,12 @@ fn write_clause(out: &mut String, c: &Clause, types: &[CustomType], ind: usize) 
     write_expr(out, &c.body, types, ind);
 }
 
-fn write_pattern(out: &mut String, p: &Pattern, types: &[CustomType]) {
+fn write_pattern(out: &mut String, p: &Pattern) {
     match p {
         Pattern::Discard => out.push('_'),
         Pattern::Var(name) => out.push_str(name),
         Pattern::Alias(pat, name) => {
-            write_pattern(out, pat, types);
+            write_pattern(out, pat);
             out.push_str(" as ");
             out.push_str(name);
         }
@@ -2100,7 +2100,7 @@ fn write_pattern(out: &mut String, p: &Pattern, types: &[CustomType]) {
                 if i > 0 {
                     out.push_str(", ");
                 }
-                write_pattern(out, el, types);
+                write_pattern(out, el);
             }
             match rest {
                 RestPat::Closed => {}
@@ -2120,16 +2120,16 @@ fn write_pattern(out: &mut String, p: &Pattern, types: &[CustomType]) {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    write_pattern(out, f, types);
+                    write_pattern(out, f);
                 }
                 out.push(')');
             }
         }
         Pattern::TupPat(a, b) => {
             out.push_str("#(");
-            write_pattern(out, a, types);
+            write_pattern(out, a);
             out.push_str(", ");
-            write_pattern(out, b, types);
+            write_pattern(out, b);
             out.push(')');
         }
         Pattern::Bits(segs) => {
@@ -2212,7 +2212,6 @@ fn push_indent(out: &mut String, ind: usize) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Validation: the generator's own contract, checked against the real
 // compiler. Run with `cargo test -p gleam-smith`.
 

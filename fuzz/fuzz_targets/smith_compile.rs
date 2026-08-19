@@ -18,7 +18,7 @@
 #![no_main]
 
 use gleam_smith::Module;
-use libfuzzer_sys::arbitrary::{Arbitrary, Unstructured};
+use libfuzzer_sys::arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

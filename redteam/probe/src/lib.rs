@@ -139,10 +139,10 @@ pub fn probe_source(src: &str) -> ProbeOutcome {
 /// Catch any compiler panic and return it as a string payload.
 pub fn probe_guarded(data: &[u8]) -> Result<ProbeOutcome, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| probe_bytes(data)))
-        .map_err(|payload| panic_payload_to_string(&payload))
+        .map_err(panic_payload_to_string)
 }
 
-fn panic_payload_to_string(payload: &Box<dyn std::any::Any + Send>) -> String {
+fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
         (*message).to_string()
     } else if let Some(message) = payload.downcast_ref::<String>() {
@@ -212,10 +212,14 @@ fn analyse(src: &str, target: Target) -> Option<(TypedModule, LineNumbers)> {
     let mut ast = parse_ok(src)?;
     ast.name = "redteam/probe".into();
 
-    let mut config = PackageConfig::default();
-    config.name = "redteam".into();
+    let config = PackageConfig {
+        name: "redteam".into(),
+        ..PackageConfig::default()
+    };
     let direct_dependencies: HashMap<EcoString, ()> = HashMap::new();
     let dev_dependencies: HashSet<EcoString> = HashSet::new();
+
+    let line_numbers = LineNumbers::new(src);
 
     let outcome = ModuleAnalyzerConstructor::<()> {
         target,
@@ -228,14 +232,10 @@ fn analyse(src: &str, target: Target) -> Option<(TypedModule, LineNumbers)> {
         target_support: TargetSupport::NotEnforced,
         package_config: &config,
     }
-    .infer_module(
-        ast,
-        LineNumbers::new(src),
-        "src/redteam_probe.gleam".into(),
-    );
+    .infer_module(ast, line_numbers.clone(), "src/redteam_probe.gleam".into());
 
     match outcome {
-        Outcome::Ok(typed) => Some((typed, LineNumbers::new(src))),
+        Outcome::Ok(typed) => Some((typed, line_numbers)),
         Outcome::PartialFailure(..) | Outcome::TotalFailure(_) => None,
     }
 }
