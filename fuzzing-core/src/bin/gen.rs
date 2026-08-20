@@ -9,13 +9,6 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let usage = "usage:\n  gen <seed>\n  gen batch <dir> <start-seed> <count>";
     match args.get(1).map(String::as_str) {
-        Some("gen") => {
-            let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
-                eprintln!("{usage}");
-                std::process::exit(2)
-            });
-            print!("{}", Module::from_seed(seed).to_source());
-        }
         Some("batch") => {
             let (Some(dir), Some(start), Some(count)) = (args.get(2), args.get(3), args.get(4))
             else {
@@ -32,8 +25,11 @@ fn main() {
             println!("wrote {count} programs to {dir}");
         }
         _ => {
-            eprintln!("{usage}");
-            std::process::exit(2);
+            let seed: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
+                eprintln!("{usage}");
+                std::process::exit(2)
+            });
+            print!("{}", Module::from_seed(seed).to_source());
         }
     }
 }
