@@ -20,6 +20,7 @@ members = [
   "erlang-term-format",
   "erlang-generation",
   "src-span",
+  "fuzzing-core"
 ]
 
 # common dependencies

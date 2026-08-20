@@ -1,0 +1,30 @@
+[package]
+name = "fuzzing-core"
+description = "Gleam compiler fuzzing: crash probe, well-typed generator, differential normaliser, and the gen/diff CLIs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "gen"
+path = "src/bin/gen.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "diff"
+path = "src/bin/diff.rs"
+test = false
+doc = false
+
+[dependencies]
+gleam-core = { path = "../compiler-core" }
+src-span = { path = "../src-span" }
+camino.workspace = true
+ecow.workspace = true
+im.workspace = true
+arbitrary = "1"
+regex = { workspace = true }
