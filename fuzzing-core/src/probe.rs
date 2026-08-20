@@ -130,11 +130,6 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-pub fn is_known_compiler_bug(panic: &str) -> bool {
-    panic.contains("Token could not be converted to binop")
-        || panic.contains("variable not in scope")
-}
-
 pub fn compile_javascript(src: &str) -> Option<String> {
     let (typed, line_numbers) = analyse(src, Target::JavaScript)?;
     let src_eco = EcoString::from(src);
