@@ -3382,7 +3382,7 @@ fuzz_target!(|data: &amp;[u8]| {
     let src = module.to_source();
     match fuzzing_core::probe::probe_source(&amp;src) {
         fuzzing_core::probe::ProbeOutcome::Compiled { .. } =&gt; {}
-        other =&gt; panic!("gleam-smith generated non-compiling program ({other}):\n{src}"),
+        other =&gt; panic!("fuzzing-core generated a non-compiling program ({other}):\n{src}"),
     }
 });
 </pre>
