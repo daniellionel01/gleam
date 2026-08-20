@@ -261,6 +261,24 @@ regex = { workspace = true }
     <strong>Dependencies.</strong> <code>gleam-core</code> is the compiler crate itself. <code>src-span</code> gives <code>LineNumbers</code>. <code>camino</code>, <code>ecow</code>, and <code>im</code> are the same types the compiler's public API exposes. <code>arbitrary</code> drives the generator from libFuzzer bytes. <code>regex</code> is the normaliser's workhorse. All but <code>arbitrary</code> and <code>regex</code> are already workspace dependencies; you add no new crates to the repository. The two <code>[[bin]]</code> entries declare the CLIs: <code>gen</code> (section 6) and <code>diff</code> (section 7).
   </div>
 
+  <p>The manifest points at <code>src/lib.rs</code>. That file is the crate root. Right now it declares one module; you add the other two lines as sections 6 and 7 build them. In its final shape:</p>
+
+  <span class="filepath">fuzzing-core/src/lib.rs (complete)</span>
+<pre>// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 The Gleam contributors
+
+//! fuzzing-core: the crash probe, the well-typed generator, the differential
+//! normaliser. Each module composes only the compiler's public API.
+
+pub mod probe;        // section 4
+pub mod generator;    // section 6
+pub mod normaliser;   // section 7
+</pre>
+
+  <div class="note">
+    <strong>A note on order.</strong> Do not create all three <code>.rs</code> files up front. Register <code>pub mod probe;</code> now. Add <code>pub mod generator;</code> when section 6 gives you the file, and <code>pub mod normaliser;</code> when section 7 does. A module that is declared but has no file is a build error, so add each line only once its file exists.
+  </div>
+
   <h3>4.2 The probe itself</h3>
 
   <p>This is the complete probe module, <code>fuzzing-core/src/probe.rs</code>. Read it in order:</p>
@@ -607,7 +625,7 @@ cargo run -p fuzzing-core --example classify</pre>
 
   <h3>4.4 What the tests assert</h3>
 
-  <p>The unit tests in <code>lib.rs</code> pin the classification contract. They are the specification:</p>
+  <p>The tests at the end of <code>probe.rs</code> pin the classification contract. They are the specification:</p>
 
   <ul>
     <li>A valid program compiles for all three outputs.</li>
