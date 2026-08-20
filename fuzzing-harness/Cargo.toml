@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Gleam contributors
+
+[package]
+name = "fuzzing-harness"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+fuzzing-core = { path = "../fuzzing-core" }
+
+[profile.release]
+debug-assertions = true
+overflow-checks = true
+
+[[bin]]
+name = "parse_only"
+path = "fuzz_targets/parse_only.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "compile_all_targets"
+path = "fuzz_targets/compile_all_targets.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "smith_compile"
+path = "fuzz_targets/smith_compile.rs"
+test = false
+doc = false
+
+[workspace]
