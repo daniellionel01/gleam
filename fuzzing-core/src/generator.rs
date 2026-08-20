@@ -1,17 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 
-//! Deterministic type-directed generator of well-typed Gleam programs.
-//!
-//! Fuzzing-core grows a random Gleam module from a seed (wasm-smith style).
-//! The module is well-typed by construction, so it can be handed to the
-//! real compiler. Raw seed bytes come from the fuzzer (`Unstructured`);
-//! `Module::from_seed` turns a plain integer seed into the same byte
-//! stream for the CLI and for the tests.
-
 use arbitrary::{Arbitrary, Result, Unstructured};
-
-// Types
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Ty {
@@ -43,8 +33,6 @@ struct FnSig {
     params: Vec<(String, Ty)>,
     ret: Ty,
 }
-
-// AST
 
 #[derive(Debug, Clone)]
 enum Expr {
@@ -83,9 +71,9 @@ enum Expr {
 /// A segment of a bit-array literal (`<<...>>`).
 #[derive(Debug, Clone)]
 enum BitSeg {
-    /// `<<value:width>>` — a fixed-width integer segment.
+    /// `<<value:width>>` - a fixed-width integer segment.
     Int(u32, u8),
-    /// `<<"str":utf8>>` — a UTF-8 string segment.
+    /// `<<"str":utf8>>` - a UTF-8 string segment.
     Utf8(&'static str),
 }
 
@@ -140,10 +128,6 @@ enum Pattern {
     Bits(Vec<BitSegPat>),
 }
 
-/// Options for integer bit-array segments in PATTERNS. These options
-/// (:big/:little, :signed/:unsigned) are only valid in pattern position
-/// and cannot appear on value segments. They exercise the codegen paths
-/// for byte-order and sign-extension handling.
 #[derive(Debug, Clone)]
 struct IntOpt {
     width: u8,
@@ -151,26 +135,23 @@ struct IntOpt {
     signed: bool,
 }
 
-/// A segment of a bit-array pattern. The wildcard utf8 form
-/// (`BitSegPat::Utf8Wild`) is the F-12 trigger (gleam-lang/gleam#6181):
-/// it matches on Erlang but silently never matches on JavaScript.
 #[derive(Debug, Clone)]
 enum BitSegPat {
-    /// `<<value:width>>` — literal integer segment.
+    /// `<<value:width>>` - literal integer segment.
     IntLit(u32, u8),
-    /// `<<"str":utf8>>` — literal string segment (works on both targets).
+    /// `<<"str":utf8>>` - literal string segment (works on both targets).
     Utf8Lit(&'static str),
-    /// `<<_:utf8>>` — wildcard utf8 segment (F-12: miscompiled on JS).
+    /// `<<_:utf8>>` - wildcard utf8 segment
     Utf8Wild,
-    /// `<<name:width>>` — binds an Int (width bits).
+    /// `<<name:width>>` - binds an Int (width bits).
     Var(String, u8),
-    /// `<<name:big-signed-8>>` — binds with endianness/signedness.
+    /// `<<name:big-signed-8>>` - binds with endianness/signedness.
     VarInt(String, IntOpt),
-    /// `<<_:big-signed-8>>` — discard with endianness/signedness.
+    /// `<<_:big-signed-8>>` - discard with endianness/signedness.
     DiscardInt(IntOpt),
-    /// `<<_:width>>` — fixed-width discard.
+    /// `<<_:width>>` - fixed-width discard.
     Discard(u8),
-    /// `<<_:bytes>>` — trailing bytes discard.
+    /// `<<_:bytes>>` - trailing bytes discard.
     Bytes,
 }
 
@@ -195,9 +176,6 @@ pub struct Module {
     functions: Vec<(FnSig, Expr)>,
     main: Vec<Stmt>,
 }
-
-// Name pools (hostile on purpose: JS/Erlang reserved words and prelude
-// names, to exercise codegen hygiene — bug class 2 in fuzzing/README.md)
 
 const VAR_POOL: &[&str] = &[
     "x",
@@ -251,30 +229,18 @@ const STR_POOL: &[&str] = &[
     "res",
     "constructor",
 ];
-/// Single-character strings — used for single-segment utf8 bit-array
-/// subjects so that `<<_:utf8>>` patterns can match exactly (one codepoint,
-/// no leftover bits). The F-12 divergence only manifests when the subject
-/// is exactly one UTF-8 codepoint.
+
 const STR_1CHAR: &[&str] = &["a", "b", "x"];
 const INT_POOL: &[i64] = &[0, 1, 2, 3, 4, 5, 7, 10, 42, 100];
-/// Float literals — whole values (0.0, 1.0, …) expose the cross-target
-/// echo-formatting divergence (Erlang prints `1.0`, JS prints `1`);
-/// fractional values (0.1, 1.5, …) exercise IEEE-754 arithmetic edges.
-///
-/// `3.14` is a deliberate literal: the generated program must print
-/// exactly `3.14`, not PI to 15 digits.
+
 #[expect(
     clippy::approx_constant,
-    reason = "the generated Gleam must render the literal 3.14, not the constant PI"
+    reason = "the generated Gleam must render the literal 3.14, not PI"
 )]
 const FLOAT_POOL: &[f64] = &[0.0, 1.0, 2.0, 0.5, 1.5, 3.14, 100.0, 0.1, 0.25, 10.0];
 
-// Generation context
-
 type Env = Vec<(String, Ty)>;
 
-/// Push a binding into the environment, respecting shadowing: a new binding
-/// with the same name makes the old one inaccessible.
 fn env_push(env: &mut Env, name: String, ty: Ty) {
     env.retain(|(n, _)| *n != name);
     env.push((name, ty));
@@ -324,12 +290,6 @@ fn roll(u: &mut Unstructured<'_>, weights: &[(u32, usize)]) -> Result<usize> {
     Ok(weights.last().expect("nonempty weights").1)
 }
 
-// Module generation
-
-/// Binding discipline for one subject position of a clause: `Free` means
-/// patterns may bind arbitrary fresh names; `One(name, ty)` means the
-/// pattern(s) must bind exactly `name` at a position of type `ty` (used to
-/// satisfy the rule that alternative patterns bind identical names).
 #[derive(Clone)]
 enum BindSpec {
     Free,
@@ -507,7 +467,7 @@ impl<'a> Arbitrary<'a> for Module {
         for _ in 0..let_count {
             let ty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
             let expr = gen_expr(u, &mut ctx, &env, &ty, 2)?;
-            // Shadowing bias: sometimes reuse a name already bound in main.
+            // Shadowing - sometimes reuse a name already bound in main.
             let name = if chance(u, 30)? {
                 match ctx.pick_shadow_name(u, &env)? {
                     Some(n) => n,
@@ -559,8 +519,6 @@ fn gen_any_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result<Ty> {
     })
 }
 
-// Expression generation
-
 fn gen_expr(
     u: &mut Unstructured<'_>,
     ctx: &mut Ctx,
@@ -568,8 +526,6 @@ fn gen_expr(
     ty: &Ty,
     depth: u8,
 ) -> Result<Expr> {
-    // BitArray only ever appears as a case subject (never echoed, never a
-    // fn param/return), so a literal is the only sensible producer.
     if matches!(ty, Ty::BitArray) {
         return gen_base(u, ctx, ty);
     }
@@ -621,7 +577,7 @@ fn gen_expr(
             for _ in 0..stmt_count {
                 let lty = pick(u, &[Ty::Int, Ty::Float, Ty::Str, Ty::Bool, Ty::ListInt])?.clone();
                 let bound = gen_expr(u, ctx, &block_env, &lty, depth - 1)?;
-                // Shadowing bias: reuse an in-scope name sometimes.
+                // Shadowing - reuse an in-scope name sometimes.
                 let name = if chance(u, 25)? {
                     match ctx.pick_shadow_name(u, &block_env)? {
                         Some(n) => n,
@@ -722,15 +678,8 @@ fn gen_base(u: &mut Unstructured<'_>, ctx: &mut Ctx, ty: &Ty) -> Result<Expr> {
     })
 }
 
-/// Byte-aligned widths for bit-array segments, biased toward 8 (so most
-/// generated bit arrays are clean byte sequences that patterns can slice).
 const SEG_WIDTHS: &[u8] = &[8, 8, 8, 16, 16, 4, 1];
 
-/// Generate a bit-array literal (`<<...>>`). Biased toward single utf8
-/// segments so that single-segment `<<_:utf8>>` / `<<"s":utf8>>` patterns
-/// can exactly match (the F-12 divergence only manifests when the
-/// subject is exactly one UTF-8 codepoint — a multi-segment subject has
-/// leftover bits and the pattern legitimately fails on BOTH targets).
 fn gen_bit_array(u: &mut Unstructured<'_>) -> Result<Expr> {
     let n = match roll(u, &[(40, 1), (30, 2), (30, 3)])? {
         1 => 1,
@@ -740,8 +689,6 @@ fn gen_bit_array(u: &mut Unstructured<'_>) -> Result<Expr> {
     let mut segs = Vec::new();
     for _ in 0..n {
         let seg = if chance(u, 55)? {
-            // Single-segment utf8 subjects use 1-char strings so that
-            // `<<_:utf8>>` patterns can exactly match (one codepoint).
             let s = if n == 1 {
                 *pick(u, STR_1CHAR)?
             } else {
@@ -758,13 +705,6 @@ fn gen_bit_array(u: &mut Unstructured<'_>) -> Result<Expr> {
     Ok(Expr::BitsLit(segs))
 }
 
-/// Generate a bit-array pattern. The last clause is a catch-all `_` to
-/// guarantee exhaustiveness (the `covers()` backstop would append one
-/// anyway, but emitting it directly produces the F-12 shape
-/// `<<_:utf8>> -> 1; _ -> -1`). Non-last clauses use `Pattern::Bits(...)`
-/// with a mix of literal, wildcard, and (at most one) binding segment.
-/// Generate a variable-binding integer segment with endianness/signedness
-/// options, or fall back to simple DiscardInt if binding can't be used.
 fn gen_var_int_seg(
     u: &mut Unstructured<'_>,
     bound: &mut Vec<(String, Ty)>,
@@ -802,10 +742,9 @@ fn gen_bit_pattern(
     let mut bound_one = false;
     for i in 0..n {
         let is_last_seg = i == n - 1;
-        // `:bytes` / `:bits` segments must be last; only allow Bytes there.
+
         let bytes_ok = is_last_seg;
-        // Single-segment patterns are biased toward the utf8 forms that
-        // exercise the F-12 codepath (wildcard vs literal string).
+
         let seg = if n == 1 {
             match roll(u, &[(30, 0), (25, 1), (35, 2), (10, 4)])? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
@@ -830,7 +769,7 @@ fn gen_bit_pattern(
             )? {
                 0 => BitSegPat::IntLit(*pick(u, INT_POOL)? as u32, *pick(u, SEG_WIDTHS)?),
                 1 => BitSegPat::Utf8Lit(pick(u, STR_POOL)?),
-                2 => BitSegPat::Utf8Wild, // F-12 trigger
+                2 => BitSegPat::Utf8Wild,
                 3 if !bound_one => {
                     bound_one = true;
                     let name = pick(u, VAR_POOL)?.to_string();
@@ -844,7 +783,7 @@ fn gen_bit_pattern(
                 }
                 4 => BitSegPat::Discard(*pick(u, SEG_WIDTHS)?),
                 5 if bytes_ok => BitSegPat::Bytes,
-                // Endianness/signedness exercise additional codegen paths.
+
                 6 if !bound_one => gen_var_int_seg(u, bound, &mut bound_one)?,
                 _ => BitSegPat::DiscardInt(IntOpt {
                     width: *pick(u, SEG_WIDTHS)?,
@@ -860,7 +799,7 @@ fn gen_bit_pattern(
 
 #[expect(
     clippy::approx_constant,
-    reason = "the divisor pool keeps 3.14 as a literal so generated Gleam prints 3.14"
+    reason = "The divisor pool stores 3.14 as a literal so that the generated Gleam code prints 3.14."
 )]
 fn gen_binop(
     u: &mut Unstructured<'_>,
@@ -1008,8 +947,6 @@ fn gen_call(
     })
 }
 
-// Case generation (the hot zone: decision trees, prefixes, guards, aliases)
-
 fn gen_case_expr(
     u: &mut Unstructured<'_>,
     ctx: &mut Ctx,
@@ -1034,10 +971,7 @@ fn gen_case_expr(
 
     for i in 0..clause_count {
         let is_last = i == clause_count - 1;
-        // Alternative patterns only for single-subject cases.
-        // F-7/F-8/F-9 suppression: NO alternatives on list subjects — the
-        // Erlang decision-tree compiler loses variable registrations for
-        // alternative list patterns following other list clauses.
+
         let alts_allowed = subj_count == 1
             && !matches!(subj_tys[0], Ty::ListInt)
             && !matches!(subj_tys[0], Ty::BitArray);
@@ -1069,10 +1003,6 @@ fn gen_case_expr(
             pats.push(pat);
         }
 
-        // Alternatives for single-subject cases. Alternative patterns must
-        // bind exactly the same variables as the initial pattern, so the
-        // binding set of the first subject's pattern drives what we may
-        // generate.
         let mut alts: Vec<Pattern> = Vec::new();
         if wants_alts {
             let subj0_binds = &bound[..];
@@ -1106,11 +1036,7 @@ fn gen_case_expr(
         let guardable = bound
             .iter()
             .any(|(_, t)| matches!(t, Ty::Int | Ty::Str | Ty::Bool));
-        // F-7 suppression: guards on alternative list patterns crash
-        // Erlang codegen when following an exact-length list clause.
-        // F-7/F-11 suppression: no guards on clauses with alternatives —
-        // the Erlang decision-tree compiler loses guard-variable scope
-        // registrations for those (list AND string subjects).
+
         let guard = if !is_last && !all_catchall && guardable && alts.is_empty() && chance(u, 40)? {
             Some(gen_guard(u, ctx, &bound)?)
         } else {
@@ -1130,8 +1056,6 @@ fn gen_case_expr(
         });
     }
 
-    // Exhaustiveness: if no clause is an unguarded catch-all (and the
-    // patterns don't obviously cover the type), append one.
     if !covers(ctx, &subj_tys, &clauses) {
         let pats: Vec<Pattern> = subj_tys
             .iter()
@@ -1240,7 +1164,7 @@ fn gen_case_subject_ty(u: &mut Unstructured<'_>, types: &[CustomType]) -> Result
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "pattern construction threads the generation state plus the per-clause name-uniqueness pools"
+    reason = "Pattern construction combines the generation state with the name-uniqueness pools for each clause."
 )]
 fn gen_pattern(
     u: &mut Unstructured<'_>,
@@ -1255,7 +1179,6 @@ fn gen_pattern(
     is_last: bool,
     allow_alias: bool,
 ) -> Result<Pattern> {
-    // BindSpec::One requires a binding position of exactly that type.
     if let BindSpec::One(name, bty) = spec {
         return gen_one_pattern(u, ctx, bound, name, bty, ty);
     }
@@ -1265,7 +1188,7 @@ fn gen_pattern(
                   ctx: &mut Ctx,
                   ty: &Ty|
      -> Result<Pattern> {
-        // Shadowing bias: sometimes reuse a name from the outer env.
+        // Shadowing - sometimes reuse a name from the outer env.
         let name = if chance(u, 20)? {
             match ctx.pick_shadow_name(u, env)? {
                 Some(n) => n,
@@ -1416,7 +1339,6 @@ fn gen_one_pattern(
     bty: &Ty,
     ty: &Ty,
 ) -> Result<Pattern> {
-    // Patterns that bind exactly `name` at a position of type `bty`.
     let pat = match (ty, bty) {
         (Ty::Str, Ty::Str) => {
             let prefix = pick(u, STR_POOL)?;
@@ -1439,7 +1361,6 @@ fn gen_one_pattern(
         }
         (Ty::Custom(k), _) => {
             let ctors = &ctx.types[*k].ctors;
-            // Find a ctor with a field of the bound type; else bind whole.
             let compatible: Vec<&Ctor> = ctors
                 .iter()
                 .filter(|c| c.fields.iter().any(|(_, f)| f == bty))
@@ -1483,9 +1404,6 @@ fn gen_alt_pattern(
     used_ints: &mut Vec<u32>,
     used_strs: &mut Vec<&'static str>,
 ) -> Result<Pattern> {
-    // Alternative patterns must bind the same names as the main pattern.
-    // If a One binding is active, reproduce exactly it; otherwise only
-    // binding-free patterns are allowed here.
     if let BindSpec::One(name, bty) = spec {
         return match (ty, bty) {
             (Ty::ListInt, Ty::Int) => Ok(Pattern::ListCons {
@@ -1535,9 +1453,6 @@ fn gen_alt_pattern(
                 fields: ctor.fields.iter().map(|_| Pattern::Discard).collect(),
             }
         }
-        // BitArray alternatives are excluded (alts_allowed is false for
-        // BitArray subjects — they'd re-trigger #5991's decision-tree bug,
-        // same as List/Str alternatives). Dead arm for exhaustiveness.
         Ty::BitArray => Pattern::Discard,
     })
 }
@@ -1697,8 +1612,6 @@ fn gen_guard(u: &mut Unstructured<'_>, ctx: &mut Ctx, bound: &[(String, Ty)]) ->
     }
 }
 
-// Rendering
-
 impl Module {
     pub fn to_source(&self) -> String {
         let mut out = String::new();
@@ -1708,7 +1621,7 @@ impl Module {
             out.push_str(": ");
             out.push_str(&ty_str(ty, &self.types));
             out.push_str(" = ");
-            // Constant values are always atomic (literals, tuples of literals).
+
             write_expr(&mut out, val, &self.types, 0);
             out.push('\n');
         }
@@ -1789,8 +1702,7 @@ impl Module {
         out
     }
 
-    /// Deterministic generation from a 64-bit seed (xorshift-expanded into
-    /// the byte stream consumed by `Arbitrary`).
+    /// Deterministic generation from a u64 seed
     pub fn from_seed(seed: u64) -> Module {
         let mut state = seed ^ 0x9E37_79B9_7F4A_7C15;
         let mut bytes = vec![0u8; 2048];
@@ -1808,7 +1720,7 @@ impl Module {
                 return m;
             }
         }
-        // Unreachable in practice; a valid fallback module.
+        // Unreachable in practice
         Module {
             types: Vec::new(),
             constants: Vec::new(),
@@ -1865,10 +1777,6 @@ fn binop_str(op: BinOp) -> &'static str {
     }
 }
 
-/// Gleam has no `(expr)` grouping syntax — `{ }` blocks are the grouping
-/// construct. Operand positions therefore wrap non-atomic expressions in
-/// block braces. (This is precedence-blunt but always valid, and earns us
-/// extra block codegen coverage.)
 fn atomic(e: &Expr) -> bool {
     matches!(
         e,
@@ -1897,7 +1805,6 @@ fn write_expr(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
     match e {
         Expr::IntLit(n) => out.push_str(&n.to_string()),
         Expr::FloatLit(f) => {
-            // Gleam requires float literals to have a decimal point.
             let s = format!("{}", f);
             if s.contains('.') || s.contains('e') {
                 out.push_str(&s);
@@ -1941,8 +1848,6 @@ fn write_expr(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
             write_operand(out, x, types, ind);
         }
         Expr::NegInt(x) => {
-            // `-{` at the start of a statement parses as binary subtraction
-            // glued to the previous statement, so emit `0 - <operand>`.
             out.push_str("0 - ");
             write_operand(out, x, types, ind);
         }
@@ -2178,10 +2083,6 @@ fn write_pattern(out: &mut String, p: &Pattern) {
     }
 }
 
-/// Guards live in a restricted grammar: no parenthesised expressions, no
-/// blocks. The guard generator only produces shapes that are
-/// precedence-safe rendered flat (comparisons/remainder atoms combined
-/// with && / || at the top level), so we write them without any grouping.
 fn write_guard(out: &mut String, e: &Expr, types: &[CustomType], ind: usize) {
     match e {
         Expr::Bin(op, l, r) => {
@@ -2212,9 +2113,6 @@ fn push_indent(out: &mut String, ind: usize) {
     }
 }
 
-// Validation: the generator's own contract, checked against the real
-// compiler. Run with `cargo test -p fuzzing-core`.
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2230,8 +2128,6 @@ mod tests {
         }
     }
 
-    /// Replay a fuzz artifact (raw Arbitrary entropy) manually:
-    ///   FUZZING_ARTIFACT=path cargo test -p fuzzing-core replay_artifact -- --ignored --nocapture
     #[test]
     #[ignore = "manual artifact replay helper"]
     fn replay_artifact() {
@@ -2255,7 +2151,7 @@ mod tests {
 
     /// Every generated program must parse and type check on both targets
     /// and reach code generation. A failure here is a fuzzing-core bug,
-    /// not a gleam bug.
+    /// not a bug in Gleam.
     #[test]
     fn generated_programs_compile_0_to_300() {
         for seed in 0..300u64 {
