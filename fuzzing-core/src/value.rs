@@ -132,7 +132,7 @@ pub fn strip_build_noise(raw: &str) -> String {
     .unwrap();
     let hint_re = regex::Regex::new(r"^(Hint:|warning:|error:)").unwrap();
     let warning_context_re = regex::Regex::new(
-        r"^(This segment|be truncated|resulting in|The |^It |\^)",
+        r"^(This segment|be truncated|resulting in|The |^It |\^|This pattern|Matching on|unreachable|redundant)",
     )
     .unwrap();
 
