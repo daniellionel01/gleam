@@ -127,7 +127,7 @@ pub fn strip_build_noise(raw: &str) -> String {
     .unwrap();
     let source_loc_re = regex::Regex::new(r"main\.gleam:\d+").unwrap();
     let progress_re = regex::Regex::new(
-        r"^(Resolving versions|Compiling |Compiled in |Running |Downloading )",
+        r"^(Resolving versions|Compiling |Compiled in |Running |Downloading |Added |Downloaded )",
     )
     .unwrap();
     let hint_re = regex::Regex::new(r"^(Hint:|warning:|error:)").unwrap();
@@ -762,7 +762,6 @@ mod tests {
 
     #[test]
     fn parse_erlang_utf8_string_as_bit_array() {
-        // Erlang renders valid UTF-8 bit arrays as strings
         assert_eq!(
             parse_erlang("\"\\u{0001}\\u{0002}\\u{0003}\""),
             Some(Value::String("\u{0001}\u{0002}\u{0003}".into()))
@@ -881,9 +880,7 @@ mod tests {
 
     #[test]
     fn cross_target_bit_array() {
-        // Erlang: <<1, 2, 3>>
         let erl = parse_erlang("<<1, 2, 3>>");
-        // JavaScript: <<1, 2, 3>>
         let js = parse_javascript("<<1, 2, 3>>");
         assert_eq!(erl, js);
         assert_eq!(erl, Some(Value::BitArray(vec![1, 2, 3])));
@@ -891,26 +888,17 @@ mod tests {
 
     #[test]
     fn cross_target_bit_array_from_utf8() {
-        // Erlang renders valid UTF-8 bit arrays as "\u{0001}\u{0002}\u{0003}"
         let erl = parse_erlang("\"\\u{0001}\\u{0002}\\u{0003}\"");
-        // JavaScript renders as <<1, 2, 3>>
         let js = parse_javascript("<<1, 2, 3>>");
-        // Both should parse to the same value
-        // Note: Erlang parses this as a String, JS as BitArray
-        // This is a known divergence that the normaliser must handle
         assert_ne!(erl, js, "Erlang renders bit arrays as UTF-8 strings, JS as <<...>>");
     }
 
     #[test]
     fn cross_target_float() {
-        // Erlang: 1.0, JavaScript: 1
         let erl = parse_erlang("1.0");
         let js = parse_javascript("1");
-        // Both should parse to Float(1.0)
         assert_eq!(erl, Some(Value::Float(1.0)));
-        // JavaScript "1" parses as Int(1), not Float(1.0)
         assert_eq!(js, Some(Value::Int(1)));
-        // This is a known divergence that the normaliser must handle
     }
 
     #[test]
@@ -971,5 +959,146 @@ mod tests {
             split_erlang_items("\"a, b\", 3"),
             vec!["\"a, b\"", "3"]
         );
+    }
+}
+
+#[cfg(test)]
+mod real_output_tests {
+    use super::*;
+
+    const ERLANG_RAW: &str = r#"  Resolving versions
+Downloading packages
+ Downloaded 1 package in 0.01s
+      Added gleam_stdlib v1.0.5
+  Compiling gleam_stdlib
+  Compiling main
+warning: Unused result value
+  ┌─ /private/var/folders/.../src/main.gleam:8:3
+  │
+8 │   echo Ok(1)
+  │   ^^^^^^^^^^ The Result value created here is unused
+
+Hint: If you are sure you don't need it you can assign it to `_`.
+
+   Compiled in 0.37s
+    Running main.main
+[90msrc/main.gleam:2[39m
+42
+[90msrc/main.gleam:3[39m
+"hello"
+[90msrc/main.gleam:4[39m
+1.0
+[90msrc/main.gleam:5[39m
+"\u{0001}\u{0002}\u{0003}"
+[90msrc/main.gleam:6[39m
+[1, 2]
+[90msrc/main.gleam:7[39m
+#(1, "two")
+[90msrc/main.gleam:8[39m
+Ok(1)
+[90msrc/main.gleam:9[39m
+Red"#;
+
+    const JAVASCRIPT_RAW: &str = r#"  Compiling gleam_stdlib
+  Compiling main
+warning: Unused result value
+  ┌─ /private/var/folders/.../src/main.gleam:8:3
+  │
+8 │   echo Ok(1)
+  │   ^^^^^^^^^^ The Result value created here is unused
+
+Hint: If you are sure you don't need it you can assign it to `_`.
+
+   Compiled in 0.04s
+    Running main.main
+[90msrc/main.gleam:2[39m
+42
+[90msrc/main.gleam:3[39m
+"hello"
+[90msrc/main.gleam:4[39m
+1
+[90msrc/main.gleam:5[39m
+<<1, 2, 3>>
+[90msrc/main.gleam:6[39m
+[1, 2]
+[90msrc/main.gleam:7[39m
+#(1, "two")
+[90msrc/main.gleam:8[39m
+Ok(1)
+[90msrc/main.gleam:9[39m
+Red"#;
+
+    #[test]
+    fn strip_build_noise_real_erlang() {
+        let stripped = strip_build_noise(ERLANG_RAW);
+        assert!(!stripped.contains("Resolving versions"));
+        assert!(!stripped.contains("Compiling"));
+        assert!(!stripped.contains("warning:"));
+        assert!(!stripped.contains("Hint:"));
+        assert!(!stripped.contains("Compiled in"));
+        assert!(stripped.contains("42"));
+        assert!(stripped.contains("\"hello\""));
+        assert!(stripped.contains("Red"));
+    }
+
+    #[test]
+    fn strip_build_noise_real_javascript() {
+        let stripped = strip_build_noise(JAVASCRIPT_RAW);
+        assert!(!stripped.contains("Compiling"));
+        assert!(!stripped.contains("warning:"));
+        assert!(!stripped.contains("Hint:"));
+        assert!(stripped.contains("42"));
+        assert!(stripped.contains("\"hello\""));
+        assert!(stripped.contains("Red"));
+    }
+
+    #[test]
+    fn parse_real_erlang_output() {
+        let values = parse_output(ERLANG_RAW, Target::Erlang);
+        assert_eq!(values, vec![
+            Value::Int(42),
+            Value::String("hello".into()),
+            Value::Float(1.0),
+            Value::String("\u{1}\u{2}\u{3}".into()),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+            Value::Tuple(vec![Value::Int(1), Value::String("two".into())]),
+            Value::Constructor("Ok".into(), vec![Value::Int(1)]),
+            Value::Constructor("Red".into(), vec![]),
+        ]);
+    }
+
+    #[test]
+    fn parse_real_javascript_output() {
+        let values = parse_output(JAVASCRIPT_RAW, Target::JavaScript);
+        assert_eq!(values, vec![
+            Value::Int(42),
+            Value::String("hello".into()),
+            Value::Int(1),
+            Value::BitArray(vec![1, 2, 3]),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+            Value::Tuple(vec![Value::Int(1), Value::String("two".into())]),
+            Value::Constructor("Ok".into(), vec![Value::Int(1)]),
+            Value::Constructor("Red".into(), vec![]),
+        ]);
+    }
+
+    #[test]
+    fn cross_target_matches_except_known_divergences() {
+        let erl = parse_output(ERLANG_RAW, Target::Erlang);
+        let js = parse_output(JAVASCRIPT_RAW, Target::JavaScript);
+        assert_eq!(erl.len(), js.len());
+        for i in 0..erl.len() {
+            if erl[i] != js[i] {
+                match (&erl[i], &js[i]) {
+                    (Value::Float(f), Value::Int(n)) => {
+                        assert_eq!(*f, *n as f64, "float/int mismatch at index {i}");
+                    }
+                    (Value::String(s), Value::BitArray(bytes)) => {
+                        assert_eq!(s.as_bytes(), bytes.as_slice(), "bit array mismatch at index {i}");
+                    }
+                    _ => panic!("unexpected difference at index {i}: {:?} vs {:?}", erl[i], js[i]),
+                }
+            }
+        }
     }
 }
