@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: 2026 The Gleam contributors
 
-//! Structured values for differential oracle comparison.
-//!
-//! Parse each target's echo output into `Value`s and compare structurally.
-//! Each target parser handles its own rendering differences.
-
 use crate::generator::{BitSeg, Expr, Module, Stmt};
 use gleam_core::build::Target;
 
@@ -14,6 +9,7 @@ use gleam_core::build::Target;
 /// Erlang and JavaScript render values differently. For example,
 /// Erlang prints `<<1, 2>>` as `"\u{0001}\u{0002}"` while JavaScript
 /// prints `<<1, 2>>`. Both parse to the same `Value`, so comparison is exact.
+///
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Nil,
@@ -31,6 +27,7 @@ pub enum Value {
 ///
 /// Handles literal expressions only. The generator echoes literals,
 /// not computed expressions.
+///
 pub fn expected_value(expr: &Expr) -> Option<Value> {
     match expr {
         Expr::IntLit(n) => Some(Value::Int(*n)),
@@ -67,12 +64,10 @@ pub fn expected_value(expr: &Expr) -> Option<Value> {
                 _ => None,
             }
         }
-        // Other expressions are computed, not echoed directly.
         _ => None,
     }
 }
 
-/// Extract the expected output values from a Module.
 pub fn expected_output(module: &Module) -> Vec<Value> {
     module
         .main_stmts()
@@ -84,14 +79,6 @@ pub fn expected_output(module: &Module) -> Vec<Value> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Parse output into Values
-// ---------------------------------------------------------------------------
-
-/// Parse one line of echo output into a `Value`.
-///
-/// Each target has its own parser because Erlang and JavaScript render
-/// values differently. Both produce the same `Value` type.
 pub fn parse_value(line: &str, target: Target) -> Option<Value> {
     let line = line.trim();
     if line.is_empty() {
@@ -103,8 +90,6 @@ pub fn parse_value(line: &str, target: Target) -> Option<Value> {
     }
 }
 
-/// Parse all output lines from a target into `Value`s.
-/// Strips build noise before parsing.
 pub fn parse_output(raw: &str, target: Target) -> Vec<Value> {
     let stripped = strip_build_noise(raw);
     stripped
@@ -118,6 +103,7 @@ pub fn parse_output(raw: &str, target: Target) -> Vec<Value> {
 ///
 /// ANSI regex from <https://github.com/chalk/ansi-regex/blob/main/index.js>
 /// License: MIT (CC0 for the regex itself)
+///
 pub fn strip_build_noise(raw: &str) -> String {
     // ansi-regex v6.0.1 from chalk/ansi-regex (MIT)
     // Matches: OSC sequences, CSI sequences, and other ANSI escape codes
@@ -647,8 +633,14 @@ mod tests {
 
     #[test]
     fn expected_bool() {
-        assert_eq!(expected_value(&Expr::BoolLit(true)), Some(Value::Bool(true)));
-        assert_eq!(expected_value(&Expr::BoolLit(false)), Some(Value::Bool(false)));
+        assert_eq!(
+            expected_value(&Expr::BoolLit(true)),
+            Some(Value::Bool(true))
+        );
+        assert_eq!(
+            expected_value(&Expr::BoolLit(false)),
+            Some(Value::Bool(false))
+        );
     }
 
     #[test]
@@ -656,29 +648,34 @@ mod tests {
         let expr = Expr::ListLit(vec![Expr::IntLit(1), Expr::IntLit(2), Expr::IntLit(3)]);
         assert_eq!(
             expected_value(&expr),
-            Some(Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]))
+            Some(Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3)
+            ]))
         );
     }
 
     #[test]
     fn expected_tuple() {
-        let expr = Expr::TupLit(
-            Box::new(Expr::IntLit(1)),
-            Box::new(Expr::StrLit("two")),
-        );
+        let expr = Expr::TupLit(Box::new(Expr::IntLit(1)), Box::new(Expr::StrLit("two")));
         assert_eq!(
             expected_value(&expr),
-            Some(Value::Tuple(vec![Value::Int(1), Value::String("two".into())]))
+            Some(Value::Tuple(vec![
+                Value::Int(1),
+                Value::String("two".into())
+            ]))
         );
     }
 
     #[test]
     fn expected_bit_array() {
-        let expr = Expr::BitsLit(vec![BitSeg::Int(1, 8), BitSeg::Int(2, 8), BitSeg::Int(3, 8)]);
-        assert_eq!(
-            expected_value(&expr),
-            Some(Value::BitArray(vec![1, 2, 3]))
-        );
+        let expr = Expr::BitsLit(vec![
+            BitSeg::Int(1, 8),
+            BitSeg::Int(2, 8),
+            BitSeg::Int(3, 8),
+        ]);
+        assert_eq!(expected_value(&expr), Some(Value::BitArray(vec![1, 2, 3])));
     }
 
     #[test]
@@ -715,7 +712,10 @@ mod tests {
 
     #[test]
     fn parse_erlang_string() {
-        assert_eq!(parse_erlang("\"hello\""), Some(Value::String("hello".into())));
+        assert_eq!(
+            parse_erlang("\"hello\""),
+            Some(Value::String("hello".into()))
+        );
         assert_eq!(parse_erlang("\"\""), Some(Value::String("".into())));
         assert_eq!(
             parse_erlang("\"line1\\nline2\""),
@@ -738,7 +738,11 @@ mod tests {
     fn parse_erlang_list() {
         assert_eq!(
             parse_erlang("[1, 2, 3]"),
-            Some(Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]))
+            Some(Value::List(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3)
+            ]))
         );
         assert_eq!(parse_erlang("[]"), Some(Value::List(vec![])));
     }
@@ -747,7 +751,10 @@ mod tests {
     fn parse_erlang_tuple() {
         assert_eq!(
             parse_erlang("#(1, \"two\")"),
-            Some(Value::Tuple(vec![Value::Int(1), Value::String("two".into())]))
+            Some(Value::Tuple(vec![
+                Value::Int(1),
+                Value::String("two".into())
+            ]))
         );
     }
 
@@ -838,7 +845,10 @@ mod tests {
     fn parse_javascript_tuple() {
         assert_eq!(
             parse_javascript("#(1, \"two\")"),
-            Some(Value::Tuple(vec![Value::Int(1), Value::String("two".into())]))
+            Some(Value::Tuple(vec![
+                Value::Int(1),
+                Value::String("two".into())
+            ]))
         );
     }
 
@@ -890,7 +900,10 @@ mod tests {
     fn cross_target_bit_array_from_utf8() {
         let erl = parse_erlang("\"\\u{0001}\\u{0002}\\u{0003}\"");
         let js = parse_javascript("<<1, 2, 3>>");
-        assert_ne!(erl, js, "Erlang renders bit arrays as UTF-8 strings, JS as <<...>>");
+        assert_ne!(
+            erl, js,
+            "Erlang renders bit arrays as UTF-8 strings, JS as <<...>>"
+        );
     }
 
     #[test]
@@ -939,26 +952,17 @@ mod tests {
 
     #[test]
     fn split_items_simple() {
-        assert_eq!(
-            split_erlang_items("1, 2, 3"),
-            vec!["1", "2", "3"]
-        );
+        assert_eq!(split_erlang_items("1, 2, 3"), vec!["1", "2", "3"]);
     }
 
     #[test]
     fn split_items_nested() {
-        assert_eq!(
-            split_erlang_items("#(1, 2), 3"),
-            vec!["#(1, 2)", "3"]
-        );
+        assert_eq!(split_erlang_items("#(1, 2), 3"), vec!["#(1, 2)", "3"]);
     }
 
     #[test]
     fn split_items_string() {
-        assert_eq!(
-            split_erlang_items("\"a, b\", 3"),
-            vec!["\"a, b\"", "3"]
-        );
+        assert_eq!(split_erlang_items("\"a, b\", 3"), vec!["\"a, b\"", "3"]);
     }
 }
 
@@ -1055,31 +1059,37 @@ Red"#;
     #[test]
     fn parse_real_erlang_output() {
         let values = parse_output(ERLANG_RAW, Target::Erlang);
-        assert_eq!(values, vec![
-            Value::Int(42),
-            Value::String("hello".into()),
-            Value::Float(1.0),
-            Value::String("\u{1}\u{2}\u{3}".into()),
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::Tuple(vec![Value::Int(1), Value::String("two".into())]),
-            Value::Constructor("Ok".into(), vec![Value::Int(1)]),
-            Value::Constructor("Red".into(), vec![]),
-        ]);
+        assert_eq!(
+            values,
+            vec![
+                Value::Int(42),
+                Value::String("hello".into()),
+                Value::Float(1.0),
+                Value::String("\u{1}\u{2}\u{3}".into()),
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::Tuple(vec![Value::Int(1), Value::String("two".into())]),
+                Value::Constructor("Ok".into(), vec![Value::Int(1)]),
+                Value::Constructor("Red".into(), vec![]),
+            ]
+        );
     }
 
     #[test]
     fn parse_real_javascript_output() {
         let values = parse_output(JAVASCRIPT_RAW, Target::JavaScript);
-        assert_eq!(values, vec![
-            Value::Int(42),
-            Value::String("hello".into()),
-            Value::Int(1),
-            Value::BitArray(vec![1, 2, 3]),
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
-            Value::Tuple(vec![Value::Int(1), Value::String("two".into())]),
-            Value::Constructor("Ok".into(), vec![Value::Int(1)]),
-            Value::Constructor("Red".into(), vec![]),
-        ]);
+        assert_eq!(
+            values,
+            vec![
+                Value::Int(42),
+                Value::String("hello".into()),
+                Value::Int(1),
+                Value::BitArray(vec![1, 2, 3]),
+                Value::List(vec![Value::Int(1), Value::Int(2)]),
+                Value::Tuple(vec![Value::Int(1), Value::String("two".into())]),
+                Value::Constructor("Ok".into(), vec![Value::Int(1)]),
+                Value::Constructor("Red".into(), vec![]),
+            ]
+        );
     }
 
     #[test]
@@ -1094,9 +1104,16 @@ Red"#;
                         assert_eq!(*f, *n as f64, "float/int mismatch at index {i}");
                     }
                     (Value::String(s), Value::BitArray(bytes)) => {
-                        assert_eq!(s.as_bytes(), bytes.as_slice(), "bit array mismatch at index {i}");
+                        assert_eq!(
+                            s.as_bytes(),
+                            bytes.as_slice(),
+                            "bit array mismatch at index {i}"
+                        );
                     }
-                    _ => panic!("unexpected difference at index {i}: {:?} vs {:?}", erl[i], js[i]),
+                    _ => panic!(
+                        "unexpected difference at index {i}: {:?} vs {:?}",
+                        erl[i], js[i]
+                    ),
                 }
             }
         }
