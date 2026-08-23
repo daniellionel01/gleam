@@ -3,3 +3,4 @@
 
 pub mod generator;
 pub mod probe;
+pub mod value;

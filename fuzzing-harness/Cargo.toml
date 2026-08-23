@@ -14,6 +14,9 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 fuzzing-core = { path = "../fuzzing-core" }
+gleam-core = { path = "../compiler-core" }
+regex = "1"
+tempfile = "3"
 
 [profile.release]
 debug-assertions = true
@@ -34,6 +37,18 @@ doc = false
 [[bin]]
 name = "smith_compile"
 path = "fuzz_targets/smith_compile.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "dual"
+path = "bin/dual.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz"
+path = "bin/fuzz.rs"
 test = false
 doc = false
 

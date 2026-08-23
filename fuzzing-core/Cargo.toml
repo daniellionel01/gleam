@@ -14,12 +14,6 @@ path = "src/bin/gen.rs"
 test = false
 doc = false
 
-[[bin]]
-name = "diff"
-path = "src/bin/diff.rs"
-test = false
-doc = false
-
 [dependencies]
 gleam-core = { path = "../compiler-core" }
 src-span = { path = "../src-span" }

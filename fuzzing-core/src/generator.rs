@@ -35,7 +35,7 @@ struct FnSig {
 }
 
 #[derive(Debug, Clone)]
-enum Expr {
+pub enum Expr {
     IntLit(i64),
     FloatLit(f64),
     StrLit(&'static str),
@@ -70,7 +70,7 @@ enum Expr {
 
 /// A segment of a bit-array literal (`<<...>>`).
 #[derive(Debug, Clone)]
-enum BitSeg {
+pub enum BitSeg {
     /// `<<value:width>>` - a fixed-width integer segment.
     Int(u32, u8),
     /// `<<"str":utf8>>` - a UTF-8 string segment.
@@ -163,7 +163,7 @@ enum RestPat {
 }
 
 #[derive(Debug, Clone)]
-enum Stmt {
+pub enum Stmt {
     Let(String, Expr),
     Echo(Expr),
 }
@@ -175,6 +175,13 @@ pub struct Module {
     helper: Option<&'static str>,
     functions: Vec<(FnSig, Expr)>,
     main: Vec<Stmt>,
+}
+
+impl Module {
+    /// Get the statements from the main function.
+    pub fn main_stmts(&self) -> &[Stmt] {
+        &self.main
+    }
 }
 
 const VAR_POOL: &[&str] = &[
@@ -2141,10 +2148,6 @@ mod tests {
             Ok(outcome) => println!("--- outcome: {outcome}"),
             Err(panic) => {
                 println!("--- guarded panic: {panic}");
-                println!(
-                    "--- known bug? {}",
-                    crate::probe::is_known_compiler_bug(&panic)
-                );
             }
         }
     }
@@ -2162,9 +2165,6 @@ mod tests {
                 Ok(outcome) => panic!(
                     "seed {seed} produced non-compiling program (outcome: {outcome}):\n{src}"
                 ),
-                Err(panic) if crate::probe::is_known_compiler_bug(&panic) => {
-                    eprintln!("seed {seed}: known compiler bug ({panic}), tolerated");
-                }
                 Err(panic) => {
                     panic!("seed {seed} produced program that CRASHED the compiler: {panic}\n{src}")
                 }
