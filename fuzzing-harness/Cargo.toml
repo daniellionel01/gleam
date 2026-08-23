@@ -41,12 +41,6 @@ test = false
 doc = false
 
 [[bin]]
-name = "dual"
-path = "bin/dual.rs"
-test = false
-doc = false
-
-[[bin]]
 name = "fuzz"
 path = "bin/fuzz.rs"
 test = false

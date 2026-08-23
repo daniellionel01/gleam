@@ -44,14 +44,15 @@ fn cmd_run(args: &[String]) {
     let module = Module::from_seed(seed);
     let outcome = run_and_compare(&module);
 
-    println!("=== fuzz run ===");
+    println!("=== fuzz ===");
     println!("seed:           {seed}");
-    println!("erlang status:  {}", outcome.erl_status);
-    println!("nodejs status:  {}", outcome.js_status);
-    println!("erlang values:  {:?}", outcome.erl_values);
-    println!("nodejs values:  {:?}", outcome.js_values);
+    println!("erlang exit:  {}", outcome.erl_status);
+    println!("nodejs exit:  {}", outcome.js_status);
+    println!("");
+    println!("erlang:  {:?}", outcome.erl_values);
+    println!("nodejs:  {:?}", outcome.js_values);
     println!(
-        "verdict:        {}",
+        "verdict: {}",
         if outcome.matched { "MATCH" } else { "MISMATCH" }
     );
 
@@ -66,13 +67,10 @@ fn cmd_batch(args: &[String]) {
             eprintln!("usage: fuzz batch <start> <count>");
             std::process::exit(2);
         });
-    let count: u64 = args
-        .get(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| {
-            eprintln!("usage: fuzz batch <start> <count>");
-            std::process::exit(2);
-        });
+    let count: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
+        eprintln!("usage: fuzz batch <start> <count>");
+        std::process::exit(2);
+    });
 
     let corpus_dir = "corpus/fuzz";
     let artifacts_dir = "artifacts/fuzz";
@@ -95,9 +93,13 @@ fn cmd_batch(args: &[String]) {
 
         if !outcome.matched {
             // Copy to artifacts (the finding)
-            let artifact_path = std::path::Path::new(artifacts_dir).join(format!("seed_{seed}.gleam"));
+            let artifact_path =
+                std::path::Path::new(artifacts_dir).join(format!("seed_{seed}.gleam"));
             fs::write(&artifact_path, &src).expect("write artifact");
-            eprintln!("[fuzz] DIVERGENCE seed {seed} -> {}", artifact_path.display());
+            eprintln!(
+                "[fuzz] DIVERGENCE seed {seed} -> {}",
+                artifact_path.display()
+            );
             eprintln!("  erlang:   {:?}", outcome.erl_values);
             eprintln!("  nodejs:   {:?}", outcome.js_values);
             found += 1;
@@ -109,7 +111,9 @@ fn cmd_batch(args: &[String]) {
         }
     }
 
-    eprintln!("[fuzz] done: {ran} programs in {corpus_dir}, {found} divergence(s) in {artifacts_dir}");
+    eprintln!(
+        "[fuzz] done: {ran} programs in {corpus_dir}, {found} divergence(s) in {artifacts_dir}"
+    );
 }
 
 struct Outcome {
