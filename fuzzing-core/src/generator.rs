@@ -78,7 +78,7 @@ pub enum BitSeg {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum BinOp {
+pub enum BinOp {
     Add,
     Sub,
     Mul,
@@ -104,7 +104,7 @@ enum BinOp {
 }
 
 #[derive(Debug, Clone)]
-struct Clause {
+pub struct Clause {
     pats: Vec<Pattern>,
     alts: Vec<Pattern>,
     guard: Option<Expr>,
