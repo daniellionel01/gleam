@@ -17,7 +17,7 @@
 //!
 //! Exit codes: 0 = match (or batch completed), 1 = mismatch, 2 = usage error.
 //!
-//! `cd fuzzing-harness && cargo build --release --bin fuzz`
+//! `cd fuzzing-cli && cargo build --release`
 
 use std::env;
 use std::fs;
@@ -34,9 +34,10 @@ fn main() {
     match rest.get(0).map(String::as_str) {
         Some("run") => cmd_run(&rest[1..], &gleam_bin),
         Some("batch") => cmd_batch(&rest[1..], &gleam_bin),
+        Some("print") => cmd_print(&rest[1..]),
         _ => {
             eprintln!(
-                "usage:\n  fuzz run <seed>\n  fuzz batch <start> <count>\n  fuzz --gleam-bin <path> ..."
+                "usage:\n  fuzz run <seed>\n  fuzz batch <start> <count>\n  fuzz print <seed>\n  fuzz --gleam-bin <path> ..."
             );
             std::process::exit(2);
         }
@@ -166,6 +167,18 @@ fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
     });
 }
 
+fn cmd_print(args: &[String]) {
+    let seed: u64 = match args.first().and_then(|s| s.parse().ok()) {
+        Some(s) => s,
+        None => {
+            eprintln!("usage: fuzz print <seed>");
+            std::process::exit(2);
+        }
+    };
+    let module = Module::from_seed(seed);
+    print!("{}", module.to_source());
+}
+
 fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
     let start: u64 = args
         .first()
@@ -179,10 +192,11 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
         std::process::exit(2);
     });
 
-    let corpus_dir = "corpus/fuzz";
-    let artifacts_dir = "artifacts/fuzz";
-    fs::create_dir_all(corpus_dir).expect("create corpus dir");
-    fs::create_dir_all(artifacts_dir).expect("create artifacts dir");
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let corpus_dir = base.join("corpus").join("fuzz");
+    let artifacts_dir = base.join("artifacts").join("fuzz");
+    fs::create_dir_all(&corpus_dir).expect("create corpus dir");
+    fs::create_dir_all(&artifacts_dir).expect("create artifacts dir");
 
     eprintln!("[fuzz] gleam: {}", gleam_bin.display());
     eprintln!("[fuzz] seeds {start}..{}", start + count - 1);
@@ -194,7 +208,7 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
         let module = Module::from_seed(seed);
         let src = module.to_source();
 
-        let corpus_path = std::path::Path::new(corpus_dir).join(format!("seed_{seed}.gleam"));
+        let corpus_path = corpus_dir.join(format!("seed_{seed}.gleam"));
         fs::write(&corpus_path, &src).expect("write corpus");
 
         let outcome = run_and_compare(&module, gleam_bin);
@@ -204,8 +218,7 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
                 skipped += 1;
                 continue;
             }
-            let artifact_path =
-                std::path::Path::new(artifacts_dir).join(format!("seed_{seed}.gleam"));
+            let artifact_path = artifacts_dir.join(format!("seed_{seed}.gleam"));
             fs::write(&artifact_path, &src).expect("write artifact");
             eprintln!(
                 "[fuzz] DIVERGENCE seed {seed} -> erlang:{} nodejs:{}",
