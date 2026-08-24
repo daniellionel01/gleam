@@ -9,4 +9,7 @@ erl_crash.dump
 node_modules/
 compiler-cli/build/
 gleam-licences.html
-fuzzing-harness/target/
+/fuzz/target/
+/fuzzing-cli/target/
+/corpus/
+/artifacts/
