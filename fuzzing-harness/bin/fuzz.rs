@@ -52,8 +52,17 @@ fn cmd_run(args: &[String]) {
     if outcome.is_otp_issue_11494 {
         println!("note:        otp issue #11494 (skipped in batch)");
     }
+    if outcome.is_gleam_issue_6182 {
+        println!("note:        gleam issue #6182 (skipped in batch)");
+    }
 
-    std::process::exit(if outcome.matched || outcome.is_otp_issue_11494 { 0 } else { 1 });
+    std::process::exit(
+        if outcome.matched || outcome.is_otp_issue_11494 || outcome.is_gleam_issue_6182 {
+            0
+        } else {
+            1
+        },
+    );
 }
 
 fn cmd_batch(args: &[String]) {
@@ -89,7 +98,7 @@ fn cmd_batch(args: &[String]) {
         let outcome = run_and_compare(&module);
 
         if !outcome.matched {
-            if outcome.is_otp_issue_11494 {
+            if outcome.is_otp_issue_11494 || outcome.is_gleam_issue_6182 {
                 skipped += 1;
                 continue;
             }
@@ -109,9 +118,7 @@ fn cmd_batch(args: &[String]) {
         }
     }
 
-    eprintln!(
-        "[fuzz] done: {ran} programs, {mismatches} mismatch(es), {skipped} skipped"
-    );
+    eprintln!("[fuzz] done: {ran} programs, {mismatches} mismatch(es), {skipped} skipped");
 }
 
 struct Outcome {
@@ -119,6 +126,7 @@ struct Outcome {
     js_status: i32,
     matched: bool,
     is_otp_issue_11494: bool,
+    is_gleam_issue_6182: bool,
 }
 
 fn run_and_compare(module: &Module) -> Outcome {
@@ -155,6 +163,7 @@ fn run_and_compare(module: &Module) -> Outcome {
     let js_ok = js_status == 0;
 
     let is_otp_issue_11494 = !erl_ok && js_ok && is_erlang_otp_issue_11494(&erl_raw);
+    let is_gleam_issue_6182 = erl_ok && !js_ok && is_javascript_syntax_error(&js_raw);
 
     let matched = if erl_ok && js_ok {
         let erl_values = value::parse_output(&erl_raw, Target::Erlang);
@@ -171,9 +180,11 @@ fn run_and_compare(module: &Module) -> Outcome {
         js_status,
         matched,
         is_otp_issue_11494,
+        is_gleam_issue_6182,
     }
 }
 
+// https://github.com/erlang/otp/issues/11494
 fn is_erlang_otp_issue_11494(raw: &str) -> bool {
     raw.contains("Internal consistency check failed")
         && raw.contains("call_only")
@@ -181,4 +192,10 @@ fn is_erlang_otp_issue_11494(raw: &str) -> bool {
         && raw.contains("{x,")
         && raw.contains("t_union")
         && raw.contains("t_bitstring")
+}
+
+// https://github.com/gleam-lang/gleam/issues/6182
+fn is_javascript_syntax_error(raw: &str) -> bool {
+    raw.contains("SyntaxError")
+        && (raw.contains("Unexpected token '&&'") || raw.contains("Unexpected token ')'"))
 }

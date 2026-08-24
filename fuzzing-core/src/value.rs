@@ -111,14 +111,14 @@ pub fn strip_build_noise(raw: &str) -> String {
         r"(?:\x07|\x1b\\|\x9c)|(?:\x1b\][^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c))|[\x1b\x9b][\[\]()*#;?]*(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]"
     )
     .unwrap();
-    let source_loc_re = regex::Regex::new(r"main\.gleam:\d+").unwrap();
+    let source_loc_re = regex::Regex::new(r"\.(gleam|erl):\d+").unwrap();
     let progress_re = regex::Regex::new(
         r"^(Resolving versions|Compiling |Compiled in |Running |Downloading |Added |Downloaded )",
     )
     .unwrap();
     let hint_re = regex::Regex::new(r"^(Hint:|warning:|error:)").unwrap();
     let warning_context_re = regex::Regex::new(
-        r"^(This segment|be truncated|resulting in|The |^It |\^|This pattern|Matching on|unreachable|redundant)",
+        r"^(This segment|be truncated|resulting in|The |^It |\^|This pattern|Matching on|unreachable|redundant|This comparison)",
     )
     .unwrap();
 
@@ -137,12 +137,13 @@ pub fn strip_build_noise(raw: &str) -> String {
             continue;
         }
 
-        // Handle warning blocks
-        if in_warning {
-            continue;
-        }
         if trimmed.starts_with("warning:") {
             in_warning = true;
+            continue;
+        }
+
+        // Handle warning blocks
+        if in_warning {
             continue;
         }
 
