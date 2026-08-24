@@ -158,7 +158,7 @@ fn run_and_compare(module: &Module) -> Outcome {
     let erl_values = value::parse_output(&erl_raw, Target::Erlang);
     let js_values = value::parse_output(&js_raw, Target::JavaScript);
 
-    let matched = erl_status == 0 && js_status == 0 && erl_values == js_values;
+    let matched = erl_status == 0 && js_status == 0 && value::outputs_match_cross_target(&erl_values, &js_values);
 
     Outcome {
         erl_values,

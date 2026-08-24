@@ -597,6 +597,34 @@ fn parse_javascript_constructor(line: &str) -> Option<Value> {
     None
 }
 
+/// Compare two values accounting for known cross-target representation
+/// differences (Float/Int, String/BitArray).
+pub fn matches_cross_target(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Float(f), Value::Int(n)) | (Value::Int(n), Value::Float(f)) => {
+            *f == *n as f64 && *f == (*n as f64).trunc()
+        }
+        (Value::String(s), Value::BitArray(bytes))
+        | (Value::BitArray(bytes), Value::String(s)) => s.as_bytes() == bytes.as_slice(),
+        (Value::List(a), Value::List(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| matches_cross_target(x, y))
+        }
+        (Value::Tuple(a), Value::Tuple(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| matches_cross_target(x, y))
+        }
+        (Value::Constructor(na, aa), Value::Constructor(nb, ab)) => {
+            na == nb
+                && aa.len() == ab.len()
+                && aa.iter().zip(ab.iter()).all(|(x, y)| matches_cross_target(x, y))
+        }
+        _ => a == b,
+    }
+}
+
+pub fn outputs_match_cross_target(a: &[Value], b: &[Value]) -> bool {
+    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| matches_cross_target(x, y))
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -904,6 +932,8 @@ mod tests {
             erl, js,
             "Erlang renders bit arrays as UTF-8 strings, JS as <<...>>"
         );
+        // But they should match cross-target
+        assert!(matches_cross_target(&erl.unwrap(), &js.unwrap()));
     }
 
     #[test]
@@ -912,6 +942,24 @@ mod tests {
         let js = parse_javascript("1");
         assert_eq!(erl, Some(Value::Float(1.0)));
         assert_eq!(js, Some(Value::Int(1)));
+        // They differ structurally but match cross-target
+        assert!(matches_cross_target(&erl.unwrap(), &js.unwrap()));
+    }
+
+    #[test]
+    fn cross_target_float_non_whole() {
+        let erl = parse_erlang("1.5");
+        let js = parse_javascript("1.5");
+        assert_eq!(erl, Some(Value::Float(1.5)));
+        assert_eq!(js, Some(Value::Float(1.5)));
+        assert!(matches_cross_target(&erl.unwrap(), &js.unwrap()));
+    }
+
+    #[test]
+    fn cross_target_float_zero_dot_zero() {
+        let erl = parse_erlang("0.0");
+        let js = parse_javascript("0");
+        assert!(matches_cross_target(&erl.unwrap(), &js.unwrap()));
     }
 
     #[test]
@@ -926,6 +974,31 @@ mod tests {
         let erl = parse_erlang("Ok(1)");
         let js = parse_javascript("Ok(1)");
         assert_eq!(erl, js);
+    }
+
+    #[test]
+    fn cross_target_list_with_float_int() {
+        // This is the exact pattern from the fuzz divergence output
+        let erl = parse_erlang("[\"ab\", 0.0, 1.0]");
+        let js = parse_javascript("[\"ab\", 0, 1]");
+        assert_eq!(
+            erl,
+            Some(Value::List(vec![
+                Value::String("ab".into()),
+                Value::Float(0.0),
+                Value::Float(1.0),
+            ]))
+        );
+        assert_eq!(
+            js,
+            Some(Value::List(vec![
+                Value::String("ab".into()),
+                Value::Int(0),
+                Value::Int(1),
+            ]))
+        );
+        // Structurally different, but cross-target equivalent
+        assert!(matches_cross_target(&erl.unwrap(), &js.unwrap()));
     }
 
     // ----- Empty and edge cases -----
@@ -1096,26 +1169,10 @@ Red"#;
     fn cross_target_matches_except_known_divergences() {
         let erl = parse_output(ERLANG_RAW, Target::Erlang);
         let js = parse_output(JAVASCRIPT_RAW, Target::JavaScript);
-        assert_eq!(erl.len(), js.len());
-        for i in 0..erl.len() {
-            if erl[i] != js[i] {
-                match (&erl[i], &js[i]) {
-                    (Value::Float(f), Value::Int(n)) => {
-                        assert_eq!(*f, *n as f64, "float/int mismatch at index {i}");
-                    }
-                    (Value::String(s), Value::BitArray(bytes)) => {
-                        assert_eq!(
-                            s.as_bytes(),
-                            bytes.as_slice(),
-                            "bit array mismatch at index {i}"
-                        );
-                    }
-                    _ => panic!(
-                        "unexpected difference at index {i}: {:?} vs {:?}",
-                        erl[i], js[i]
-                    ),
-                }
-            }
-        }
+        assert!(
+            outputs_match_cross_target(&erl, &js),
+            "erl: {:?}\njs: {:?}",
+            erl, js
+        );
     }
 }
