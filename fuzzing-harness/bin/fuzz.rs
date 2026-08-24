@@ -104,38 +104,59 @@ fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
     let outcome = run_and_compare(&module, gleam_bin);
 
     println!("=== fuzz ===");
-    println!("seed:        {seed}");
     println!("gleam:       {}", gleam_bin.display());
+    println!("seed:        {seed}");
     println!("erlang exit: {}", outcome.erl_status);
     println!("nodejs exit: {}", outcome.js_status);
-    println!("match:       {}", outcome.matched);
+    // ANSI colors: green for match, yellow for skip, red for divergence.
+    // The codes are inert when piped to a non-terminal, so CI logs stay
+    // readable.
+    const RED: &str = "\x1b[31m";
+    const GREEN: &str = "\x1b[32m";
+    const YELLOW: &str = "\x1b[33m";
+    const RESET: &str = "\x1b[0m";
+    if outcome.matched {
+        println!("match:       {GREEN}OK{RESET}");
+    } else if outcome.skip_note.is_some() {
+        println!("match:       {YELLOW}SKIP{RESET}");
+    } else {
+        println!("match:       {RED}NO{RESET}");
+    }
     if let Some(note) = &outcome.skip_note {
         println!("note:        {note} (skipped in batch)");
     }
-    if !outcome.matched && outcome.skip_note.is_none() {
-        println!("\n--- source ---\n{}", module.to_source());
-        if outcome.erl_status == 0 && outcome.js_status == 0 {
-            println!("\n--- diverging values ---");
-            let max = outcome.erl_values.len().max(outcome.js_values.len());
-            for i in 0..max {
-                let erl = outcome
-                    .erl_values
-                    .get(i)
-                    .map(|v| format!("{v:?}"))
-                    .unwrap_or_else(|| "<missing>".into());
-                let js = outcome
-                    .js_values
-                    .get(i)
-                    .map(|v| format!("{v:?}"))
-                    .unwrap_or_else(|| "<missing>".into());
-                let mark = if erl == js { "  " } else { "!=" };
-                println!("  [{i}] {mark} erl={erl}  js={js}");
-            }
-        } else {
-            // One or both backends crashed; dump raw output for debugging.
-            println!("\n--- erlang output ---\n{}", outcome.erl_raw);
-            println!("--- nodejs output ---\n{}", outcome.js_raw);
+    if outcome.erl_status == 0 && outcome.js_status == 0 {
+        println!("\n--- values ---");
+        let max = outcome.erl_values.len().max(outcome.js_values.len());
+        for i in 0..max {
+            let erl = outcome
+                .erl_values
+                .get(i)
+                .map(|v| format!("{v:?}"))
+                .unwrap_or_else(|| "<missing>".into());
+            let js = outcome
+                .js_values
+                .get(i)
+                .map(|v| format!("{v:?}"))
+                .unwrap_or_else(|| "<missing>".into());
+            let (mark, value_color) = if value::matches_cross_target(
+                outcome.erl_values.get(i).unwrap_or(&value::Value::Nil),
+                outcome.js_values.get(i).unwrap_or(&value::Value::Nil),
+            ) {
+                ("==", "")
+            } else {
+                ("!=", RED)
+            };
+            let trailing = if value_color.is_empty() { "" } else { RESET };
+            println!(
+                "[{i}] {mark} erl={value_color}{erl}{trailing}  js={value_color}{js}{trailing}"
+            );
         }
+    } else if outcome.skip_note.is_none() {
+        // One or both backends crashed. Dump raw output so the user can
+        // see the failure.
+        println!("\n--- erlang output ---\n{}", outcome.erl_raw);
+        println!("--- nodejs output ---\n{}", outcome.js_raw);
     }
 
     std::process::exit(if outcome.matched || outcome.skip_note.is_some() {

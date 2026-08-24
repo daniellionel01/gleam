@@ -3,6 +3,17 @@
 
 use crate::generator::{BitSeg, Expr, Module, Stmt};
 use gleam_core::build::Target;
+use std::sync::LazyLock;
+
+/// ANSI escape regex from chalk/ansi-regex v6.0.1 (MIT).
+/// Matches OSC, CSI, and other ANSI escape sequences.
+/// <https://github.com/chalk/ansi-regex/blob/main/index.js>
+static ANSI_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?:\x07|\x1b\\|\x9c)|(?:\x1b\][^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c))|[\x1b\x9b][\[\]()*#;?]*(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]",
+    )
+    .unwrap()
+});
 
 /// A Gleam value as printed by `echo`.
 ///
@@ -90,27 +101,72 @@ pub fn parse_value(line: &str, target: Target) -> Option<Value> {
     }
 }
 
-pub fn parse_output(raw: &str, target: Target) -> Vec<Value> {
-    let stripped = strip_build_noise(raw);
-    stripped
+/// Find the 1-indexed line numbers of every `echo` statement in the source.
+///
+/// Each Gleam `echo` prints `<file>:<line>` followed by the value. A value
+/// follows only a marker whose line number is in the returned set, so
+/// compiler warning text is not picked up as a value.
+///
+pub fn echo_line_numbers(source: &str) -> std::collections::HashSet<u32> {
+    source
         .lines()
-        .filter_map(|line| parse_value(line, target))
+        .enumerate()
+        .filter(|(_, line)| line.trim_start().starts_with("echo "))
+        .map(|(i, _)| (i + 1) as u32)
         .collect()
+}
+
+/// Parse runtime output using the source's echo line numbers as markers.
+///
+/// Each `echo` runtime call writes a `<file>:<line>` marker followed by the
+/// inspected value. Markers whose line number is not in `echo_lines` do
+/// not start a value, so warning hint text is not mistaken for one.
+///
+pub fn parse_output_with_echo_lines(
+    raw: &str,
+    target: Target,
+    echo_lines: &std::collections::HashSet<u32>,
+) -> Vec<Value> {
+    // Matches a line that is just `<file>:<number>` after ANSI stripping,
+    // for example `src/main.gleam:11`.
+    let echo_marker_re = regex::Regex::new(r"^[^\s:]+(?:/[^\s:]+)*:\d+$").unwrap();
+    let line_num_re = regex::Regex::new(r":(\d+)$").unwrap();
+
+    let mut values = Vec::new();
+    let mut next_is_value = false;
+
+    for line in raw.lines() {
+        let stripped = ANSI_RE.replace_all(line, "");
+        let trimmed = stripped.trim();
+
+        if next_is_value {
+            next_is_value = false;
+            if !trimmed.is_empty() {
+                if let Some(v) = parse_value(trimmed, target) {
+                    values.push(v);
+                }
+            }
+            continue;
+        }
+
+        if echo_marker_re.is_match(trimmed) {
+            if let Some(caps) = line_num_re.captures(trimmed) {
+                if let Ok(n) = caps[1].parse::<u32>() {
+                    if echo_lines.contains(&n) {
+                        next_is_value = true;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+    values
 }
 
 /// Strip build noise from raw output.
 /// Removes ANSI codes, warnings, source locations, and progress lines.
 ///
-/// ANSI regex from <https://github.com/chalk/ansi-regex/blob/main/index.js>
-/// License: MIT (CC0 for the regex itself)
-///
 pub fn strip_build_noise(raw: &str) -> String {
-    // ansi-regex v6.0.1 from chalk/ansi-regex (MIT)
-    // Matches: OSC sequences, CSI sequences, and other ANSI escape codes
-    let ansi_re = regex::Regex::new(
-        r"(?:\x07|\x1b\\|\x9c)|(?:\x1b\][^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c))|[\x1b\x9b][\[\]()*#;?]*(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]"
-    )
-    .unwrap();
     let source_loc_re = regex::Regex::new(r"\.(gleam|erl):\d+").unwrap();
     let progress_re = regex::Regex::new(
         r"^(Resolving versions|Compiling |Compiled in |Running |Downloading |Added |Downloaded )",
@@ -123,18 +179,24 @@ pub fn strip_build_noise(raw: &str) -> String {
     .unwrap();
 
     let mut result = String::new();
+    // A warning block runs from `warning: ...` up to the next `Hint:`, a new
+    // `warning:`, `Running`/`Compiled in`, or end of input. Blank lines
+    // inside the block are part of it, so multi-paragraph hint text is
+    // skipped too.
     let mut in_warning = false;
-    let mut in_warning_block = false;
 
     for line in raw.lines() {
-        let stripped = ansi_re.replace_all(line, "");
+        let stripped = ANSI_RE.replace_all(line, "");
         let trimmed = stripped.trim();
 
-        // Skip empty lines
-        if trimmed.is_empty() {
+        // A warning block ends at the next `warning:`, `Hint:`, or program
+        // output line such as `Running` or `Compiled in`.
+        if in_warning
+            && (trimmed.starts_with("warning:")
+                || progress_re.is_match(trimmed)
+                || hint_re.is_match(trimmed))
+        {
             in_warning = false;
-            in_warning_block = false;
-            continue;
         }
 
         if trimmed.starts_with("warning:") {
@@ -142,21 +204,13 @@ pub fn strip_build_noise(raw: &str) -> String {
             continue;
         }
 
-        // Handle warning blocks
+        // Skip every line until a marker resets the flag.
         if in_warning {
             continue;
         }
 
-        // Handle warning context (indented lines after warning details)
-        if in_warning_block {
-            if trimmed.starts_with("Hint:") || trimmed.starts_with("error:") {
-                in_warning_block = false;
-            } else {
-                continue;
-            }
-        }
+        // Skip indented source-snippet lines after a warning.
         if warning_context_re.is_match(trimmed) {
-            in_warning_block = true;
             continue;
         }
 
@@ -605,25 +659,38 @@ pub fn matches_cross_target(a: &Value, b: &Value) -> bool {
         (Value::Float(f), Value::Int(n)) | (Value::Int(n), Value::Float(f)) => {
             *f == *n as f64 && *f == (*n as f64).trunc()
         }
-        (Value::String(s), Value::BitArray(bytes))
-        | (Value::BitArray(bytes), Value::String(s)) => s.as_bytes() == bytes.as_slice(),
+        (Value::String(s), Value::BitArray(bytes)) | (Value::BitArray(bytes), Value::String(s)) => {
+            s.as_bytes() == bytes.as_slice()
+        }
         (Value::List(a), Value::List(b)) => {
-            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| matches_cross_target(x, y))
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|(x, y)| matches_cross_target(x, y))
         }
         (Value::Tuple(a), Value::Tuple(b)) => {
-            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| matches_cross_target(x, y))
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|(x, y)| matches_cross_target(x, y))
         }
         (Value::Constructor(na, aa), Value::Constructor(nb, ab)) => {
             na == nb
                 && aa.len() == ab.len()
-                && aa.iter().zip(ab.iter()).all(|(x, y)| matches_cross_target(x, y))
+                && aa
+                    .iter()
+                    .zip(ab.iter())
+                    .all(|(x, y)| matches_cross_target(x, y))
         }
         _ => a == b,
     }
 }
 
 pub fn outputs_match_cross_target(a: &[Value], b: &[Value]) -> bool {
-    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| matches_cross_target(x, y))
+    a.len() == b.len()
+        && a.iter()
+            .zip(b.iter())
+            .all(|(x, y)| matches_cross_target(x, y))
 }
 
 // ---------------------------------------------------------------------------
@@ -1044,67 +1111,11 @@ mod tests {
 mod real_output_tests {
     use super::*;
 
-    const ERLANG_RAW: &str = r#"  Resolving versions
-Downloading packages
- Downloaded 1 package in 0.01s
-      Added gleam_stdlib v1.0.5
-  Compiling gleam_stdlib
-  Compiling main
-warning: Unused result value
-  ┌─ /private/var/folders/.../src/main.gleam:8:3
-  │
-8 │   echo Ok(1)
-  │   ^^^^^^^^^^ The Result value created here is unused
+    const SOURCE: &str = "pub fn main() {\n  echo 42\n  echo \"hello\"\n  echo 1.0\n  echo <<1, 2, 3>>\n  echo [1, 2]\n  echo #(1, \"two\")\n  echo Ok(1)\n  echo Red\n}\n";
 
-Hint: If you are sure you don't need it you can assign it to `_`.
+    const ERLANG_RAW: &str = "  Resolving versions\nDownloading packages\n Downloaded 1 package in 0.01s\n      Added gleam_stdlib v1.0.5\n  Compiling gleam_stdlib\n  Compiling main\nwarning: Unused result value\n  \u{250c}\u{2500} /private/var/folders/.../src/main.gleam:8:3\n  \u{2502}\n8 \u{2502}   echo Ok(1)\n  \u{2502}   ^^^^^^^^^^ The Result value created here is unused\n\nHint: If you are sure you don't need it you can assign it to `_`.\n\n   Compiled in 0.37s\n    Running main.main\n\u{1b}[90msrc/main.gleam:2\u{1b}[39m\n42\n\u{1b}[90msrc/main.gleam:3\u{1b}[39m\n\"hello\"\n\u{1b}[90msrc/main.gleam:4\u{1b}[39m\n1.0\n\u{1b}[90msrc/main.gleam:5\u{1b}[39m\n\"\\u{0001}\\u{0002}\\u{0003}\"\n\u{1b}[90msrc/main.gleam:6\u{1b}[39m\n[1, 2]\n\u{1b}[90msrc/main.gleam:7\u{1b}[39m\n#(1, \"two\")\n\u{1b}[90msrc/main.gleam:8\u{1b}[39m\nOk(1)\n\u{1b}[90msrc/main.gleam:9\u{1b}[39m\nRed";
 
-   Compiled in 0.37s
-    Running main.main
-[90msrc/main.gleam:2[39m
-42
-[90msrc/main.gleam:3[39m
-"hello"
-[90msrc/main.gleam:4[39m
-1.0
-[90msrc/main.gleam:5[39m
-"\u{0001}\u{0002}\u{0003}"
-[90msrc/main.gleam:6[39m
-[1, 2]
-[90msrc/main.gleam:7[39m
-#(1, "two")
-[90msrc/main.gleam:8[39m
-Ok(1)
-[90msrc/main.gleam:9[39m
-Red"#;
-
-    const JAVASCRIPT_RAW: &str = r#"  Compiling gleam_stdlib
-  Compiling main
-warning: Unused result value
-  ┌─ /private/var/folders/.../src/main.gleam:8:3
-  │
-8 │   echo Ok(1)
-  │   ^^^^^^^^^^ The Result value created here is unused
-
-Hint: If you are sure you don't need it you can assign it to `_`.
-
-   Compiled in 0.04s
-    Running main.main
-[90msrc/main.gleam:2[39m
-42
-[90msrc/main.gleam:3[39m
-"hello"
-[90msrc/main.gleam:4[39m
-1
-[90msrc/main.gleam:5[39m
-<<1, 2, 3>>
-[90msrc/main.gleam:6[39m
-[1, 2]
-[90msrc/main.gleam:7[39m
-#(1, "two")
-[90msrc/main.gleam:8[39m
-Ok(1)
-[90msrc/main.gleam:9[39m
-Red"#;
+    const JAVASCRIPT_RAW: &str = "  Compiling gleam_stdlib\n  Compiling main\nwarning: Unused result value\n  \u{250c}\u{2500} /private/var/folders/.../src/main.gleam:8:3\n  \u{2502}\n8 \u{2502}   echo Ok(1)\n  \u{2502}   ^^^^^^^^^^ The Result value created here is unused\n\nHint: If you are sure you don't need it you can assign it to `_`.\n\n   Compiled in 0.04s\n    Running main.main\n\u{1b}[90msrc/main.gleam:2\u{1b}[39m\n42\n\u{1b}[90msrc/main.gleam:3\u{1b}[39m\n\"hello\"\n\u{1b}[90msrc/main.gleam:4\u{1b}[39m\n1\n\u{1b}[90msrc/main.gleam:5\u{1b}[39m\n<<1, 2, 3>>\n\u{1b}[90msrc/main.gleam:6\u{1b}[39m\n[1, 2]\n\u{1b}[90msrc/main.gleam:7\u{1b}[39m\n#(1, \"two\")\n\u{1b}[90msrc/main.gleam:8\u{1b}[39m\nOk(1)\n\u{1b}[90msrc/main.gleam:9\u{1b}[39m\nRed";
 
     #[test]
     fn strip_build_noise_real_erlang() {
@@ -1132,7 +1143,8 @@ Red"#;
 
     #[test]
     fn parse_real_erlang_output() {
-        let values = parse_output(ERLANG_RAW, Target::Erlang);
+        let lines = echo_line_numbers(SOURCE);
+        let values = parse_output_with_echo_lines(ERLANG_RAW, Target::Erlang, &lines);
         assert_eq!(
             values,
             vec![
@@ -1150,7 +1162,8 @@ Red"#;
 
     #[test]
     fn parse_real_javascript_output() {
-        let values = parse_output(JAVASCRIPT_RAW, Target::JavaScript);
+        let lines = echo_line_numbers(SOURCE);
+        let values = parse_output_with_echo_lines(JAVASCRIPT_RAW, Target::JavaScript, &lines);
         assert_eq!(
             values,
             vec![
@@ -1168,12 +1181,155 @@ Red"#;
 
     #[test]
     fn cross_target_matches_except_known_divergences() {
-        let erl = parse_output(ERLANG_RAW, Target::Erlang);
-        let js = parse_output(JAVASCRIPT_RAW, Target::JavaScript);
+        let lines = echo_line_numbers(SOURCE);
+        let erl = parse_output_with_echo_lines(ERLANG_RAW, Target::Erlang, &lines);
+        let js = parse_output_with_echo_lines(JAVASCRIPT_RAW, Target::JavaScript, &lines);
         assert!(
             outputs_match_cross_target(&erl, &js),
             "erl: {:?}\njs: {:?}",
-            erl, js
+            erl,
+            js
         );
+    }
+
+    // A warning with a multi-paragraph hint text (separated by blank lines)
+    // must not leak into the parsed value stream. Real example captured from
+    // `gleam run` output for a "Redundant tuple" warning.
+    const ERLANG_MULTIPARAGRAPH_WARNING_RAW: &str = "  Compiling main\nwarning: Redundant tuple\n   \u{250c}\u{2500}/tmp/main.gleam:22:20\n   \u{2502}\n22 \u{2502}     k_seed -> case #(True, False) {\n   \u{2502}                    ^^^^^^^^^^^^^^ You can remove this tuple wrapper\n\nInstead of building a tuple and matching on it, you can match on its\ncontents directly.\nA case expression can take multiple subjects separated by commas like this:\n\n    case one_subject, another_subject {\n      _, _ -> todo\n    }\n\nSee: https://tour.gleam.run/flow-control/multiple-subjects/\n\n   Compiled in 0.25s\n    Running main.main\n\u{1b}[90msrc/main.gleam:21\u{1b}[39m\n2\n\u{1b}[90msrc/main.gleam:34\u{1b}[39m\n42\n\u{1b}[90msrc/main.gleam:47\u{1b}[39m\nTrue";
+
+    #[test]
+    fn strip_build_noise_multiparagraph_warning() {
+        let stripped = strip_build_noise(ERLANG_MULTIPARAGRAPH_WARNING_RAW);
+        assert!(
+            !stripped.contains("Instead of building"),
+            "warning hint text leaked: {stripped}"
+        );
+        assert!(
+            !stripped.contains("A case expression can take"),
+            "warning hint text leaked: {stripped}"
+        );
+        assert!(
+            !stripped.contains("See: https://tour.gleam.run"),
+            "warning hint text leaked: {stripped}"
+        );
+        assert!(stripped.contains("2"));
+        assert!(stripped.contains("42"));
+        assert!(stripped.contains("True"));
+    }
+
+    #[test]
+    fn parse_multiparagraph_warning() {
+        let values = parse_output_with_echo_lines(
+            ERLANG_MULTIPARAGRAPH_WARNING_RAW,
+            Target::Erlang,
+            &echo_line_numbers(ERLANG_MULTIPARAGRAPH_SOURCE),
+        );
+        assert_eq!(
+            values,
+            vec![Value::Int(2), Value::Int(42), Value::Bool(true)]
+        );
+    }
+
+    // Source corresponding to ERLANG_MULTIPARAGRAPH_WARNING_RAW. Echoes are
+    // on lines 21, 34, 47.
+    const ERLANG_MULTIPARAGRAPH_SOURCE: &str = r#"pub const k_golden: String = "constructor"
+pub const k_limit: Float = 2.0
+pub const k_seed: Int = 42
+
+fn yield(constructor: Float, prototype: Int, default: Float) -> List(Int) {
+[7]
+}
+
+fn f1(v0: Int) -> Int {
+case "a" {
+    item | "constructor" <> item -> {
+      let item = 2.0
+      4
+    }
+    constructor -> v0
+  }
+}
+
+pub fn main() {
+  let k_limit = True
+  echo case 100 + 3 {
+    k_seed -> case #(True, False) {
+      #(False as whole, True) -> 10
+      #(False, True) -> 1 + k_seed
+      #(False, _) -> k_seed
+      v1 -> 2
+    }
+    _ -> {
+      let x = k_golden <> k_golden
+      f1(k_seed)
+    }
+    3 -> 7
+  }
+  echo {
+    let value = [10, 1]
+    let constructor = value
+    case "constructor" <> k_golden {
+      "a" <> inner | "abc" <> inner -> 4
+      inner -> k_seed
+      a | "b" <> a -> {
+        let a = k_seed
+        let acc = k_golden
+        k_seed
+      }
+    }
+  }
+  echo True
+}
+"#;
+
+    #[test]
+    fn echo_line_numbers_finds_all_echos() {
+        let lines = echo_line_numbers(ERLANG_MULTIPARAGRAPH_SOURCE);
+        assert!(lines.contains(&21), "missing echo on line 21: {lines:?}");
+        assert!(lines.contains(&34), "missing echo on line 34: {lines:?}");
+        assert!(lines.contains(&47), "missing echo on line 47: {lines:?}");
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn parse_with_echo_lines_ignores_warning_text() {
+        // The raw output contains a "Redundant tuple" warning whose hint
+        // text leaks capital-letter-prefixed lines. With source-aware
+        // parsing, those lines are ignored because they don't follow an
+        // echo marker.
+        let lines = echo_line_numbers(ERLANG_MULTIPARAGRAPH_SOURCE);
+        let values =
+            parse_output_with_echo_lines(ERLANG_MULTIPARAGRAPH_WARNING_RAW, Target::Erlang, &lines);
+        assert_eq!(
+            values,
+            vec![Value::Int(2), Value::Int(42), Value::Bool(true)],
+            "warning text leaked: {values:?}"
+        );
+    }
+
+    #[test]
+    fn parse_with_echo_lines_handles_javascript() {
+        // The JS equivalent of ERLANG_MULTIPARAGRAPH_WARNING_RAW (same
+        // program, JS target).
+        let raw = "  Compiling main\nwarning: Redundant tuple\n   \u{250c}\u{2500}/tmp/main.gleam:8:20\n   \u{2502}\n8 \u{2502}     k_seed -> case #(True, False) {\n   \u{2502}                    ^^^^^^^^^^^^^^ You can remove this tuple wrapper\n\nInstead of building a tuple and matching on it, you can match on its\ncontents directly.\nA case expression can take multiple subjects separated by commas like this:\n\n    case one_subject, another_subject {\n      _, _ -> todo\n    }\n\nSee: https://tour.gleam.run/flow-control/multiple-subjects/\n\n   Compiled in 0.04s\n    Running main.main\n\u{1b}[90msrc/main.gleam:21\u{1b}[39m\n2\n\u{1b}[90msrc/main.gleam:34\u{1b}[39m\n42\n\u{1b}[90msrc/main.gleam:47\u{1b}[39m\nTrue";
+        let lines = echo_line_numbers(ERLANG_MULTIPARAGRAPH_SOURCE);
+        let values = parse_output_with_echo_lines(raw, Target::JavaScript, &lines);
+        assert_eq!(
+            values,
+            vec![Value::Int(2), Value::Int(42), Value::Bool(true)],
+            "JS values wrong: {values:?}"
+        );
+    }
+
+    #[test]
+    fn parse_with_echo_lines_drops_out_of_range_markers() {
+        // If a source location line in the output doesn't correspond to
+        // an echo (e.g. it's a warning location), the marker is ignored
+        // and the value beneath it is not picked up.
+        let raw = "\x1b[90msrc/main.gleam:5\x1b[39m\nwarning text here\n\x1b[90msrc/main.gleam:11\x1b[39m\n42\n";
+        let mut lines = std::collections::HashSet::new();
+        lines.insert(11);
+        let values = parse_output_with_echo_lines(raw, Target::Erlang, &lines);
+        assert_eq!(values, vec![Value::Int(42)]);
     }
 }
