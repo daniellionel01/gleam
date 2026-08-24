@@ -15,9 +15,6 @@
 //! or the `FUZZ_GLEAM_BIN` environment variable. The path actually used is
 //! printed at startup.
 //!
-//! Run `gleam-patch apply` to rebuild the local nightly with patches
-//! applied, and `fuzz` will pick it up automatically.
-//!
 //! Exit codes: 0 = match (or batch completed), 1 = mismatch, 2 = usage error.
 //!
 //! `cd fuzzing-harness && cargo build --release --bin fuzz`

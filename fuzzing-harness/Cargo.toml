@@ -17,9 +17,6 @@ fuzzing-core = { path = "../fuzzing-core" }
 gleam-core = { path = "../compiler-core" }
 regex = "1"
 tempfile = "3"
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-sha2 = "0.10"
 
 [profile.release]
 debug-assertions = true
@@ -46,12 +43,6 @@ doc = false
 [[bin]]
 name = "fuzz"
 path = "bin/fuzz.rs"
-test = false
-doc = false
-
-[[bin]]
-name = "gleam-patch"
-path = "bin/gleam-patch.rs"
 test = false
 doc = false
 
