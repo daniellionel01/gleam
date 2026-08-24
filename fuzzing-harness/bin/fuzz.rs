@@ -45,12 +45,12 @@ fn cmd_run(args: &[String]) {
     let outcome = run_and_compare(&module);
 
     println!("=== fuzz ===");
-    println!("seed:           {seed}");
-    println!("erlang exit:  {}", outcome.erl_status);
-    println!("nodejs exit:  {}", outcome.js_status);
+    println!("seed:        {seed}");
+    println!("erlang exit: {}", outcome.erl_status);
+    println!("nodejs exit: {}", outcome.js_status);
     println!("");
-    println!("erlang:  {:?}", outcome.erl_values);
-    println!("nodejs:  {:?}", outcome.js_values);
+    println!("erlang: {:?}", outcome.erl_values);
+    println!("nodejs: {:?}", outcome.js_values);
     println!(
         "verdict: {}",
         if outcome.matched { "MATCH" } else { "MISMATCH" }
