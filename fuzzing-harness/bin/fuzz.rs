@@ -17,7 +17,7 @@ use std::fs;
 use std::process::Command;
 
 use fuzzing_core::generator::Module;
-use fuzzing_core::value::{self, Value};
+use fuzzing_core::value;
 use gleam_core::build::Target;
 
 fn main() {
@@ -48,15 +48,12 @@ fn cmd_run(args: &[String]) {
     println!("seed:        {seed}");
     println!("erlang exit: {}", outcome.erl_status);
     println!("nodejs exit: {}", outcome.js_status);
-    println!("");
-    println!("erlang: {:?}", outcome.erl_values);
-    println!("nodejs: {:?}", outcome.js_values);
-    println!(
-        "verdict: {}",
-        if outcome.matched { "MATCH" } else { "MISMATCH" }
-    );
+    println!("match:       {}", outcome.matched);
+    if outcome.is_otp_issue_11494 {
+        println!("note:        otp issue #11494 (skipped in batch)");
+    }
 
-    std::process::exit(if outcome.matched { 0 } else { 1 });
+    std::process::exit(if outcome.matched || outcome.is_otp_issue_11494 { 0 } else { 1 });
 }
 
 fn cmd_batch(args: &[String]) {
@@ -78,50 +75,50 @@ fn cmd_batch(args: &[String]) {
     fs::create_dir_all(artifacts_dir).expect("create artifacts dir");
 
     eprintln!("[fuzz] seeds {start}..{}", start + count - 1);
-    let mut found = 0u64;
+    let mut mismatches = 0u64;
+    let mut skipped = 0u64;
     let mut ran = 0u64;
 
     for seed in start..start + count {
         let module = Module::from_seed(seed);
         let src = module.to_source();
 
-        // Save generated program to corpus
         let corpus_path = std::path::Path::new(corpus_dir).join(format!("seed_{seed}.gleam"));
         fs::write(&corpus_path, &src).expect("write corpus");
 
         let outcome = run_and_compare(&module);
 
         if !outcome.matched {
-            // Copy to artifacts (the finding)
+            if outcome.is_otp_issue_11494 {
+                skipped += 1;
+                continue;
+            }
             let artifact_path =
                 std::path::Path::new(artifacts_dir).join(format!("seed_{seed}.gleam"));
             fs::write(&artifact_path, &src).expect("write artifact");
             eprintln!(
-                "[fuzz] DIVERGENCE seed {seed} -> {}",
-                artifact_path.display()
+                "[fuzz] DIVERGENCE seed {seed} -> erlang:{} nodejs:{}",
+                outcome.erl_status, outcome.js_status,
             );
-            eprintln!("  erlang:   {:?}", outcome.erl_values);
-            eprintln!("  nodejs:   {:?}", outcome.js_values);
-            found += 1;
+            mismatches += 1;
         }
 
         ran += 1;
         if ran % 10 == 0 {
-            eprintln!("[fuzz] {ran}/{count} run, {found} divergences");
+            eprintln!("[fuzz] {ran}/{count} run, {mismatches} mismatches, {skipped} skipped");
         }
     }
 
     eprintln!(
-        "[fuzz] done: {ran} programs in {corpus_dir}, {found} divergence(s) in {artifacts_dir}"
+        "[fuzz] done: {ran} programs, {mismatches} mismatch(es), {skipped} skipped"
     );
 }
 
 struct Outcome {
-    erl_values: Vec<Value>,
-    js_values: Vec<Value>,
     erl_status: i32,
     js_status: i32,
     matched: bool,
+    is_otp_issue_11494: bool,
 }
 
 fn run_and_compare(module: &Module) -> Outcome {
@@ -129,7 +126,6 @@ fn run_and_compare(module: &Module) -> Outcome {
     let work = tempfile::tempdir().expect("create temp dir");
     let project_dir = work.path();
 
-    // Set up temp project
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir).expect("create src dir");
     fs::write(src_dir.join("main.gleam"), &src).expect("write main.gleam");
@@ -155,16 +151,34 @@ fn run_and_compare(module: &Module) -> Outcome {
     let (erl_raw, erl_status) = run("erlang", &[]);
     let (js_raw, js_status) = run("javascript", &["--runtime", "nodejs"]);
 
-    let erl_values = value::parse_output(&erl_raw, Target::Erlang);
-    let js_values = value::parse_output(&js_raw, Target::JavaScript);
+    let erl_ok = erl_status == 0;
+    let js_ok = js_status == 0;
 
-    let matched = erl_status == 0 && js_status == 0 && value::outputs_match_cross_target(&erl_values, &js_values);
+    let is_otp_issue_11494 = !erl_ok && js_ok && is_erlang_otp_issue_11494(&erl_raw);
+
+    let matched = if erl_ok && js_ok {
+        let erl_values = value::parse_output(&erl_raw, Target::Erlang);
+        let js_values = value::parse_output(&js_raw, Target::JavaScript);
+        value::outputs_match_cross_target(&erl_values, &js_values)
+    } else if !erl_ok && !js_ok {
+        value::strip_build_noise(&erl_raw) == value::strip_build_noise(&js_raw)
+    } else {
+        false
+    };
 
     Outcome {
-        erl_values,
-        js_values,
         erl_status,
         js_status,
         matched,
+        is_otp_issue_11494,
     }
+}
+
+fn is_erlang_otp_issue_11494(raw: &str) -> bool {
+    raw.contains("Internal consistency check failed")
+        && raw.contains("call_only")
+        && raw.contains("bad_arg_type")
+        && raw.contains("{x,")
+        && raw.contains("t_union")
+        && raw.contains("t_bitstring")
 }
