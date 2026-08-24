@@ -1165,6 +1165,7 @@ dependencies = [
  "arbitrary",
  "camino",
  "ecow",
+ "erlang-generation",
  "gleam-core",
  "im",
  "regex",

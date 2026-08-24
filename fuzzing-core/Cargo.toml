@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 gleam-core = { path = "../compiler-core" }
+erlang-generation = { path = "../erlang-generation" }
 src-span = { path = "../src-span" }
 camino.workspace = true
 ecow.workspace = true

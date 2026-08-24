@@ -6,6 +6,7 @@ use std::fmt;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
+use erlang_generation::ErlangSourceBuilder;
 use gleam_core::{
     analyse::{ModuleAnalyzerConstructor, TargetSupport},
     ast::{TypedModule, UntypedModule},
@@ -153,9 +154,11 @@ pub fn compile_typescript_declarations(src: &str) -> Option<String> {
 
 pub fn compile_erlang(src: &str) -> Option<String> {
     let (typed, line_numbers) = analyse(src, Target::Erlang)?;
+    let builder = ErlangSourceBuilder::default();
     Some(erlang::module(
+        builder,
         &typed,
-        line_numbers,
+        &line_numbers,
         Utf8Path::new("fuzzing/root"),
     ))
 }
