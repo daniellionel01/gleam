@@ -109,11 +109,11 @@ fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
     println!("erlang exit: {}", outcome.erl_status);
     println!("nodejs exit: {}", outcome.js_status);
     println!("match:       {}", outcome.matched);
-    if outcome.is_otp_issue_11494 {
-        println!("note:        otp issue #11494 (skipped in batch)");
+    if let Some(note) = &outcome.skip_note {
+        println!("note:        {note} (skipped in batch)");
     }
 
-    std::process::exit(if outcome.matched || outcome.is_otp_issue_11494 {
+    std::process::exit(if outcome.matched || outcome.skip_note.is_some() {
         0
     } else {
         1
@@ -154,7 +154,7 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
         let outcome = run_and_compare(&module, gleam_bin);
 
         if !outcome.matched {
-            if outcome.is_otp_issue_11494 {
+            if outcome.skip_note.is_some() {
                 skipped += 1;
                 continue;
             }
@@ -181,7 +181,7 @@ struct Outcome {
     erl_status: i32,
     js_status: i32,
     matched: bool,
-    is_otp_issue_11494: bool,
+    skip_note: Option<String>,
 }
 
 fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
@@ -217,8 +217,6 @@ fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
     let erl_ok = erl_status == 0;
     let js_ok = js_status == 0;
 
-    let is_otp_issue_11494 = !erl_ok && js_ok && is_erlang_otp_issue_11494(&erl_raw);
-
     let matched = if erl_ok && js_ok {
         let erl_values = value::parse_output(&erl_raw, Target::Erlang);
         let js_values = value::parse_output(&js_raw, Target::JavaScript);
@@ -229,12 +227,39 @@ fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
         false
     };
 
+    let skip_note = known_skips(&erl_raw, &js_raw, erl_status, js_status);
+
     Outcome {
         erl_status,
         js_status,
         matched,
-        is_otp_issue_11494,
+        skip_note,
     }
+}
+
+// Add a new entry here to filter a known issue. Each rule returns Some(note)
+// when the result should be skipped with that note, or None to defer to
+// the next rule / treat as a real result.
+fn known_skips(erl_raw: &str, js_raw: &str, erl_status: i32, js_status: i32) -> Option<String> {
+    let erl_ok = erl_status == 0;
+    let js_ok = js_status == 0;
+
+    // https://github.com/erlang/otp/issues/11494
+    if !erl_ok && js_ok && is_erlang_otp_issue_11494(erl_raw) {
+        return Some("otp issue #11494".into());
+    }
+
+    // https://github.com/gleam-lang/gleam/issues/6182
+    if erl_ok && !js_ok && is_gleam_issue_6182(js_raw) {
+        return Some("gleam issue #6182".into());
+    }
+
+    // https://github.com/gleam-lang/gleam/issues/6212
+    if erl_ok && !js_ok && is_gleam_issue_6212(js_raw) {
+        return Some("gleam issue #6212".into());
+    }
+
+    None
 }
 
 // https://github.com/erlang/otp/issues/11494
@@ -245,4 +270,15 @@ fn is_erlang_otp_issue_11494(raw: &str) -> bool {
         && raw.contains("{x,")
         && raw.contains("t_union")
         && raw.contains("t_bitstring")
+}
+
+// https://github.com/gleam-lang/gleam/issues/6182
+fn is_gleam_issue_6182(raw: &str) -> bool {
+    raw.contains("SyntaxError: Unexpected token '&&'")
+        || raw.contains("SyntaxError: Unexpected token ')'")
+}
+
+// https://github.com/gleam-lang/gleam/issues/6212
+fn is_gleam_issue_6212(raw: &str) -> bool {
+    raw.contains("TypeError:") && raw.contains("is not a function")
 }
