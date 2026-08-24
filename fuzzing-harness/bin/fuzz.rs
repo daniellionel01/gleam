@@ -112,6 +112,31 @@ fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
     if let Some(note) = &outcome.skip_note {
         println!("note:        {note} (skipped in batch)");
     }
+    if !outcome.matched && outcome.skip_note.is_none() {
+        println!("\n--- source ---\n{}", module.to_source());
+        if outcome.erl_status == 0 && outcome.js_status == 0 {
+            println!("\n--- diverging values ---");
+            let max = outcome.erl_values.len().max(outcome.js_values.len());
+            for i in 0..max {
+                let erl = outcome
+                    .erl_values
+                    .get(i)
+                    .map(|v| format!("{v:?}"))
+                    .unwrap_or_else(|| "<missing>".into());
+                let js = outcome
+                    .js_values
+                    .get(i)
+                    .map(|v| format!("{v:?}"))
+                    .unwrap_or_else(|| "<missing>".into());
+                let mark = if erl == js { "  " } else { "!=" };
+                println!("  [{i}] {mark} erl={erl}  js={js}");
+            }
+        } else {
+            // One or both backends crashed; dump raw output for debugging.
+            println!("\n--- erlang output ---\n{}", outcome.erl_raw);
+            println!("--- nodejs output ---\n{}", outcome.js_raw);
+        }
+    }
 
     std::process::exit(if outcome.matched || outcome.skip_note.is_some() {
         0
@@ -182,6 +207,10 @@ struct Outcome {
     js_status: i32,
     matched: bool,
     skip_note: Option<String>,
+    erl_raw: String,
+    js_raw: String,
+    erl_values: Vec<value::Value>,
+    js_values: Vec<value::Value>,
 }
 
 fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
@@ -217,9 +246,22 @@ fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
     let erl_ok = erl_status == 0;
     let js_ok = js_status == 0;
 
+    // Use the source's echo line numbers as markers so we only extract
+    // output from actual `echo` calls, ignoring compiler warning noise.
+    let echo_lines = value::echo_line_numbers(&src);
+
+    let erl_values = if erl_ok {
+        value::parse_output_with_echo_lines(&erl_raw, Target::Erlang, &echo_lines)
+    } else {
+        Vec::new()
+    };
+    let js_values = if js_ok {
+        value::parse_output_with_echo_lines(&js_raw, Target::JavaScript, &echo_lines)
+    } else {
+        Vec::new()
+    };
+
     let matched = if erl_ok && js_ok {
-        let erl_values = value::parse_output(&erl_raw, Target::Erlang);
-        let js_values = value::parse_output(&js_raw, Target::JavaScript);
         value::outputs_match_cross_target(&erl_values, &js_values)
     } else if !erl_ok && !js_ok {
         value::strip_build_noise(&erl_raw) == value::strip_build_noise(&js_raw)
@@ -234,6 +276,10 @@ fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
         js_status,
         matched,
         skip_note,
+        erl_raw,
+        js_raw,
+        erl_values,
+        js_values,
     }
 }
 
