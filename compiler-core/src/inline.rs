@@ -128,9 +128,9 @@ use crate::{
     ast::{
         self, ArgNames, Assert, AssignName, Assignment, AssignmentKind, BitArrayOption,
         BitArraySegment, BitArraySize, CallArg, Clause, FunctionLiteralKind, Pattern,
-        PipelineAssignmentKind, Publicity, Statement, TailPattern, TypedArg, TypedAssert,
-        TypedAssignment, TypedBitArraySize, TypedClause, TypedDefinitions, TypedExpr,
-        TypedExprBitArraySegment, TypedFunction, TypedModule, TypedPattern,
+        PipelineAssignmentKind, Publicity, Statement, StringPrefixLeftSideAssignment, TailPattern,
+        TypedArg, TypedAssert, TypedAssignment, TypedBitArraySize, TypedClause, TypedDefinitions,
+        TypedExpr, TypedExprBitArraySegment, TypedFunction, TypedModule, TypedPattern,
         TypedPipelineAssignment, TypedStatement, TypedUse, visit::Visit,
     },
     exhaustiveness::{Body, CompiledCase, Decision},
@@ -433,8 +433,17 @@ impl Inliner<'_> {
             } => Pattern::StringPrefix {
                 location,
                 left_location,
-                left_side_assignment: left_side_assignment
-                    .map(|(name, location)| (self.define_variable(name), location)),
+                left_side_assignment: left_side_assignment.map(
+                    |StringPrefixLeftSideAssignment {
+                         name,
+                         name_start_position,
+                         location,
+                     }| StringPrefixLeftSideAssignment {
+                        name: self.define_variable(name),
+                        name_start_position,
+                        location,
+                    },
+                ),
                 right_location,
                 left_side_string,
                 right_side_assignment: match right_side_assignment {
@@ -1164,7 +1173,6 @@ impl Inliner<'_> {
         let compiled_case = CompiledCase {
             tree: self.decision(compiled_case.tree),
             subject_variables: compiled_case.subject_variables,
-            unreachable: compiled_case.unreachable,
         };
 
         TypedExpr::Case {

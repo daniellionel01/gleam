@@ -50,7 +50,7 @@ pub struct Implementations {
     pub gleam: bool,
     pub can_run_on_erlang: bool,
     pub can_run_on_javascript: bool,
-    /// Whether the function has an implementation that uses external erlang
+    /// Whether the function has an implementation that uses external Erlang
     /// code.
     pub uses_erlang_externals: bool,
     /// Whether the function has an implementation that uses external javascript
@@ -209,7 +209,7 @@ impl Implementations {
             || (self.can_run_on_javascript && (*gleam || *other_can_run_on_javascript));
 
         // If a function uses a function that relies on external code (be it
-        // javascript or erlang) then it's considered as using external code as
+        // JavaScript or Erlang) then it's considered as using external code as
         // well.
         //
         // For example:
@@ -221,10 +221,10 @@ impl Implementations {
         //
         // pub fn main() { erlang_only_with_pure_gleam_default() }
         // ```
-        // Both functions will end up using external erlang code and have the
+        // Both functions will end up using external Erlang code and have the
         // following implementations:
         // `Implementations { gleam: true, uses_erlang_externals: true, uses_javascript_externals: false}`.
-        // They have a pure gleam implementation and an erlang specific external
+        // They have a pure gleam implementation and an Erlang specific external
         // implementation.
         self.uses_erlang_externals = self.uses_erlang_externals || *other_uses_erlang_externals;
         self.uses_javascript_externals =
@@ -473,7 +473,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                 location, value, ..
             } => Ok(self.infer_string(value, location)),
 
-            UntypedExpr::PipeLine { expressions } => Ok(self.infer_pipeline(expressions)),
+            UntypedExpr::Pipeline { expressions } => Ok(self.infer_pipeline(expressions)),
 
             UntypedExpr::Fn {
                 location,
@@ -1640,7 +1640,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
                         | UntypedExpr::List { .. }
                         | UntypedExpr::Call { .. }
                         | UntypedExpr::BinOp { .. }
-                        | UntypedExpr::PipeLine { .. }
+                        | UntypedExpr::Pipeline { .. }
                         | UntypedExpr::Case { .. }
                         | UntypedExpr::FieldAccess { .. }
                         | UntypedExpr::Tuple { .. }
@@ -4849,7 +4849,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
             | UntypedExpr::List { .. }
             | UntypedExpr::Call { .. }
             | UntypedExpr::BinOp { .. }
-            | UntypedExpr::PipeLine { .. }
+            | UntypedExpr::Pipeline { .. }
             | UntypedExpr::Case { .. }
             | UntypedExpr::Tuple { .. }
             | UntypedExpr::TupleIndex { .. }
@@ -5468,8 +5468,7 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
     ) -> CompiledCase {
         let mut case = exhaustiveness::CaseToCompile::new(subject_types);
         clauses.iter().for_each(|clause| case.add_clause(clause));
-        let mut result = case.compile(self.environment);
-        let mut unreachable = HashSet::new();
+        let result = case.compile(self.environment);
 
         // Error for missing clauses that would cause a crash
         if result.diagnostics.missing {
@@ -5499,14 +5498,10 @@ impl<'a, 'b> ExprTyper<'a, 'b> {
 
                         self.problems
                             .warning(Warning::UnreachableCasePattern { location, reason });
-
-                        let _ = unreachable.insert((clause_index, pattern_index));
                     }
                 }
             }
         }
-
-        result.compiled_case.unreachable = unreachable;
 
         result.compiled_case
     }

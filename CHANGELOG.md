@@ -9,9 +9,14 @@
 
 ### Compiler
 
-- When compiling to Erlang any case clauses found to be unreachable will no
-  longer generate any code.
-  ([Jack Programs](https://github.com/jackprogramsjp))
+- When compiling to Erlang, Gleam now compiles to the Erlang Abstract Format
+  instead of textual Erlang.
+  This format supports mapping every generated Erlang line back to its
+  corresponding line in the original Gleam source file.
+  ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
+
+- When compiling to Erlang the Gleam compiler is roughly 8% faster.
+  ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
 
 - The compiler now emits a warning when trying to use the pattern of a spread
   and a variable when pattern matching inside a 'case' clause.
@@ -99,8 +104,17 @@
 
   ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
 
+- When generating Erlang type definitions, types called `Record` will be renamed
+  to `record_` to not overwrite Erlang's built-in `record` type introduced in
+  OTP29.
+  ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
+
 - The compiler now provides a specific error message directing the user to the
   correct syntax when trying to update a record after providing fields.
+  ([0xda157](https://github.com/0xda157))
+
+- The compiler now provides a more specific error message when encountering a
+  merge conflict indicator
   ([0xda157](https://github.com/0xda157))
 
 ### Build tool
@@ -116,13 +130,34 @@
   ([Amr Kadry](https://github.com/Amrkadry) and
   ([Louis Pilfold](https://github.com/lpil))
 
+- Make links to Tangled repositories use their new domain & URL format.
+  ([Naomi Roberts](https://github.com/naomieow))
+
 ### Language server
 
 - The "Generate dynamic decoder" code action is now only offered when the
   `gleam_stdlib` package is available.
   ([0xda157](https://github.com/0xda157))
 
+- Renaming a prelude item to its original name no longer unnecessarily imports
+  it.
+  ([0xda157](https://github.com/0xda157))
+
+- The "add missing patterns" code action now has higher precedence than the code
+  action to discard an unused result.
+  ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
+
+- The "pattern match on argument" code action now has higher precedence over the
+  "discard unused argument" code action.
+  ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
+
 ### Formatter
+
+### Compiler Wasm API
+
+- The WebAssembly build of the compiler now exposes a `format_source` function
+  for formatting Gleam source code.
+  ([John Downey](https://github.com/jtdowney))
 
 ### Bug fixes
 
@@ -152,6 +187,24 @@
 
 - Fixed a bug where file permissions were not set in Hex tarballs.
   ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
+
+- Fixed a bug where echo would print BitArrays like `<<1, 2, 3>>` as strings on
+  the Erlang target.
+  ([Giacomo Cavalieri](https://github.com/giacomocavalieri))
+
+- Fixed a bug where the "Discard unused variable" language server code action
+  would produce invalid code when discarding left side assignment of string
+  prefix patterns.
+  ([Andrey Kozhev](https://github.com/ankddev))
+
+- Fixed a bug where the "Discard unused variable" language server code action
+  would produce invalid code when discarding bindings in patterns with
+  alternative patterns.
+  ([Andrey Kozhev](https://github.com/ankddev))
+
+- Fixed a bug where the language server would not suggest prefix pattern
+  prefix alias.
+  ([Andrey Kozhev](https://github.com/ankddev))
 
 ## v1.18.1 - 2026-08-01
 
