@@ -115,17 +115,12 @@ fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
     if outcome.is_otp_issue_11494 {
         println!("note:        otp issue #11494 (skipped in batch)");
     }
-    if outcome.is_gleam_issue_6182 {
-        println!("note:        gleam issue #6182 (skipped in batch)");
-    }
 
-    std::process::exit(
-        if outcome.matched || outcome.is_otp_issue_11494 || outcome.is_gleam_issue_6182 {
-            0
-        } else {
-            1
-        },
-    );
+    std::process::exit(if outcome.matched || outcome.is_otp_issue_11494 {
+        0
+    } else {
+        1
+    });
 }
 
 fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
@@ -162,7 +157,7 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
         let outcome = run_and_compare(&module, gleam_bin);
 
         if !outcome.matched {
-            if outcome.is_otp_issue_11494 || outcome.is_gleam_issue_6182 {
+            if outcome.is_otp_issue_11494 {
                 skipped += 1;
                 continue;
             }
@@ -190,7 +185,6 @@ struct Outcome {
     js_status: i32,
     matched: bool,
     is_otp_issue_11494: bool,
-    is_gleam_issue_6182: bool,
 }
 
 fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {

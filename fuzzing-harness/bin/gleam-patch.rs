@@ -21,16 +21,13 @@
 //!
 //! `cd fuzzing-harness && cargo run --bin gleam-patch -- <command>`
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(serde::Deserialize)]
 struct PatchEntry {
-    issue: String,
     pr: String,
-    description: String,
     patch: String,
     expected_hash: Vec<ExpectedHash>,
 }
@@ -185,7 +182,10 @@ fn build() {
 fn status() {
     let patches = load_patches();
     if patches.is_empty() {
-        eprintln!("[gleam-patch] no patches found in {}", patches_dir().display());
+        eprintln!(
+            "[gleam-patch] no patches found in {}",
+            patches_dir().display()
+        );
         return;
     }
     for (name, entry) in patches {
@@ -199,7 +199,10 @@ fn status() {
 fn apply_all() {
     let patches = load_patches();
     if patches.is_empty() {
-        eprintln!("[gleam-patch] no patches found in {}", patches_dir().display());
+        eprintln!(
+            "[gleam-patch] no patches found in {}",
+            patches_dir().display()
+        );
         return;
     }
     let mut applied = 0;
