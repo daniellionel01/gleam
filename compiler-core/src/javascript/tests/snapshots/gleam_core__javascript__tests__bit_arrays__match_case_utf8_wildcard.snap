@@ -1,0 +1,22 @@
+---
+source: compiler-core/src/javascript/tests/bit_arrays.rs
+expression: "\npub fn go(x) {\n    case x {\n    <<_:utf8>> -> 1\n    _ -> 2\n    }\n}\n   "
+---
+----- SOURCE CODE
+
+pub fn go(x) {
+    case x {
+    <<_:utf8>> -> 1
+    _ -> 2
+    }
+}
+   
+
+----- COMPILED JAVASCRIPT
+export function go(x) {
+  if (x.bitSize === 64) {
+    return 1;
+  } else {
+    return 2;
+  }
+}

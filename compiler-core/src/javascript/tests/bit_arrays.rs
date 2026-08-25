@@ -323,6 +323,21 @@ pub fn go(x) {
     );
 }
 
+// https://github.com/gleam-lang/gleam/issues/6181
+#[test]
+fn match_case_utf8_wildcard() {
+    assert_js!(
+        r#"
+pub fn go(x) {
+    case x {
+    <<_:utf8>> -> 1
+    _ -> 2
+    }
+}
+   "#,
+    );
+}
+
 #[test]
 fn utf8_codepoint() {
     assert_js!(
