@@ -4,20 +4,19 @@
 //! Fuzzing binary: generate well-typed Gleam programs and run them on both
 //! backends, reporting divergences.
 //!
-//! Usage:
-//!   fuzz run <seed>                  generate + compare one program
-//!   fuzz batch <start> <count>       run seeds start..start+count
-//!   fuzz --gleam-bin <path> ...      use a different Gleam binary
+//! Usage (run from the workspace root):
+//!   cargo run -p fuzzing-cli -- run <seed>          generate + compare one program
+//!   cargo run -p fuzzing-cli -- batch <start> <count>
+//!   cargo run -p fuzzing-cli -- print <seed>        print the generated source
+//!   cargo run -p fuzzing-cli -- --gleam-bin <path> ...
 //!
-//! By default `fuzz` looks for a Gleam build at `<repo>/target/release/gleam`
-//! (the local nightly from this repository). If that doesn't exist, it
-//! falls back to `gleam` from $PATH. Override either with `--gleam-bin <path>`
-//! or the `FUZZ_GLEAM_BIN` environment variable. The path actually used is
-//! printed at startup.
+//! By default `fuzzing-cli` looks for a Gleam build at
+//! `<repo>/target/release/gleam` (the local nightly from this repository).
+//! If that doesn't exist, it falls back to `gleam` from $PATH. Override
+//! either with `--gleam-bin <path>` or the `FUZZ_GLEAM_BIN` environment
+//! variable. The path actually used is printed at startup.
 //!
 //! Exit codes: 0 = match (or batch completed), 1 = mismatch, 2 = usage error.
-//!
-//! `cd fuzzing-cli && cargo build --release`
 
 use std::env;
 use std::fs;
@@ -37,7 +36,7 @@ fn main() {
         Some("print") => cmd_print(&rest[1..]),
         _ => {
             eprintln!(
-                "usage:\n  fuzz run <seed>\n  fuzz batch <start> <count>\n  fuzz print <seed>\n  fuzz --gleam-bin <path> ..."
+                "usage:\n  cargo run -p fuzzing-cli -- run <seed>\n  cargo run -p fuzzing-cli -- batch <start> <count>\n  cargo run -p fuzzing-cli -- print <seed>\n  cargo run -p fuzzing-cli -- --gleam-bin <path> ..."
             );
             std::process::exit(2);
         }
@@ -97,7 +96,7 @@ fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
         .first()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| {
-            eprintln!("usage: fuzz run <seed>");
+            eprintln!("usage: cargo run -p fuzzing-cli -- run <seed>");
             std::process::exit(2);
         });
 
@@ -171,7 +170,7 @@ fn cmd_print(args: &[String]) {
     let seed: u64 = match args.first().and_then(|s| s.parse().ok()) {
         Some(s) => s,
         None => {
-            eprintln!("usage: fuzz print <seed>");
+            eprintln!("usage: cargo run -p fuzzing-cli -- print <seed>");
             std::process::exit(2);
         }
     };
@@ -184,11 +183,11 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
         .first()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| {
-            eprintln!("usage: fuzz batch <start> <count>");
+            eprintln!("usage: cargo run -p fuzzing-cli -- batch <start> <count>");
             std::process::exit(2);
         });
     let count: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
-        eprintln!("usage: fuzz batch <start> <count>");
+        eprintln!("usage: cargo run -p fuzzing-cli -- batch <start> <count>");
         std::process::exit(2);
     });
 
@@ -198,8 +197,8 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
     fs::create_dir_all(&corpus_dir).expect("create corpus dir");
     fs::create_dir_all(&artifacts_dir).expect("create artifacts dir");
 
-    eprintln!("[fuzz] gleam: {}", gleam_bin.display());
-    eprintln!("[fuzz] seeds {start}..{}", start + count - 1);
+    eprintln!("[fuzzing-cli] gleam: {}", gleam_bin.display());
+    eprintln!("[fuzzing-cli] seeds {start}..{}", start + count - 1);
     let mut mismatches = 0u64;
     let mut skipped = 0u64;
     let mut ran = 0u64;
@@ -221,7 +220,7 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
             let artifact_path = artifacts_dir.join(format!("seed_{seed}.gleam"));
             fs::write(&artifact_path, &src).expect("write artifact");
             eprintln!(
-                "[fuzz] DIVERGENCE seed {seed} -> erlang:{} nodejs:{}",
+                "[fuzzing-cli] DIVERGENCE seed {seed} -> erlang:{} nodejs:{}",
                 outcome.erl_status, outcome.js_status,
             );
             mismatches += 1;
@@ -229,11 +228,11 @@ fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
 
         ran += 1;
         if ran % 10 == 0 {
-            eprintln!("[fuzz] {ran}/{count} run, {mismatches} mismatches, {skipped} skipped");
+            eprintln!("[fuzzing-cli] {ran}/{count} run, {mismatches} mismatches, {skipped} skipped");
         }
     }
 
-    eprintln!("[fuzz] done: {ran} programs, {mismatches} mismatch(es), {skipped} skipped");
+    eprintln!("[fuzzing-cli] done: {ran} programs, {mismatches} mismatch(es), {skipped} skipped");
 }
 
 struct Outcome {

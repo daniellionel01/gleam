@@ -12,9 +12,3 @@ license = "Apache-2.0"
 fuzzing-core = { path = "../fuzzing-core" }
 gleam-core = { path = "../compiler-core" }
 tempfile = "3"
-
-[[bin]]
-name = "fuzz"
-path = "src/main.rs"
-test = false
-doc = false
