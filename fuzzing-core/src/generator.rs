@@ -2153,8 +2153,7 @@ mod tests {
     }
 
     /// Every generated program must parse and type check on both targets
-    /// and reach code generation. A failure here is a fuzzing-core bug,
-    /// not a bug in Gleam.
+    /// and reach code generation.
     #[test]
     fn generated_programs_compile_0_to_300() {
         for seed in 0..300u64 {
@@ -2166,7 +2165,7 @@ mod tests {
                     "seed {seed} produced non-compiling program (outcome: {outcome}):\n{src}"
                 ),
                 Err(panic) => {
-                    panic!("seed {seed} produced program that CRASHED the compiler: {panic}\n{src}")
+                    panic!("seed {seed} produced program that crashed the compiler: {panic}\n{src}")
                 }
             }
         }

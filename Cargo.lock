@@ -1159,14 +1159,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuzz"
-version = "0.0.0"
-dependencies = [
- "fuzzing-core",
- "libfuzzer-sys",
-]
-
-[[package]]
 name = "fuzzing-cli"
 version = "0.0.0"
 dependencies = [
@@ -2062,16 +2054,6 @@ name = "libc"
 version = "0.2.184"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
-
-[[package]]
-name = "libfuzzer-sys"
-version = "0.4.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9fd2f41a1cba099f79a0b6b6c35656cf7c03351a7bae8ff0f28f25270f929d2"
-dependencies = [
- "arbitrary",
- "cc",
-]
 
 [[package]]
 name = "libm"

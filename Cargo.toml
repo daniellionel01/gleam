@@ -21,7 +21,6 @@ members = [
   "erlang-generation",
   "src-span",
   "fuzzing-core",
-  "fuzz",
   "fuzzing-cli"
 ]
 
@@ -94,9 +93,3 @@ unicode-segmentation = "1.13.2"
 xxhash-rust = { version = "0", features = ["xxh3"] }
 # Source spans and line numbers
 src-span = { path = "./src-span" }
-
-# libFuzzer harnesses need a release build with debug assertions on. The
-# default release profile strips them, which makes crashes harder to triage.
-[profile.release]
-debug-assertions = true
-overflow-checks = true
