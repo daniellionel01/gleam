@@ -1,5 +1,5 @@
-pub const k_golden: Float = 0.1
-pub const k_seed: Float = 2.0
+pub const golden_value: Float = 0.1
+pub const seed_value: Float = 2.0
 
 pub type V0 {
   Cv1(value: List(Int))
@@ -27,7 +27,7 @@ fn default(value: Float, item: Float, self_: #(Int, Bool)) -> Bool {
 
 pub fn main() {
   let l = True || False
-  let k_golden = 3
+  let golden_value = 3
   echo {
     {
       let rest = "data"
@@ -39,7 +39,7 @@ pub fn main() {
       }
     }
   } <> {
-    case fn(v6, v7) { k_golden }(False, 1.5), k_golden + k_golden {
+    case fn(v6, v7) { golden_value }(False, 1.5), golden_value + golden_value {
       4, 9 -> "ab" <> "data"
       1, 6 as whole -> "data"
       3, _ -> "b"

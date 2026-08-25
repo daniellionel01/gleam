@@ -1,6 +1,6 @@
-pub const k_limit: Int = 4
-pub const k_seed: Bool = False
-pub const k_e: String = "bc"
+pub const limit_value: Int = 4
+pub const seed_value: Bool = False
+pub const euler_value: String = "bc"
 
 fn f0(m: String) -> Int {
 case False, [1, 100] {
@@ -70,7 +70,7 @@ case "b", {
 pub fn main() {
   let length = fn(v13) { [3, 100] }(True)
   echo {
-    let k_e = 3.14
+    let euler_value = 3.14
     case fn(v14, v15) { length }(100, "data") {
       [6, ..rest] -> fn(v16) { length }(0.1)
       [] -> {

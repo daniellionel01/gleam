@@ -1,5 +1,5 @@
-pub const k_limit: String = ""
-pub const k_tag: String = "res"
+pub const limit_value: String = ""
+pub const tag_value: String = "res"
 
 pub type Number {
   Record
@@ -36,7 +36,7 @@ pub fn main() {
   let delete = 42
   let delete = True
   echo 4 |> export(f1(False), "a")
-  echo k_limit
+  echo limit_value
   echo {
     let z = 0.0
     fn(v5) { [7, 4] }(0.1)

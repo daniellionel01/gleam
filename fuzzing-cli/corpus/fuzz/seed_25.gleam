@@ -1,6 +1,6 @@
-pub const k_pi: Float = 10.0
-pub const k_tag: Int = 5
-pub const k_e: Float = 1.5
+pub const pi_value: Float = 10.0
+pub const tag_value: Int = 5
+pub const euler_value: Float = 1.5
 
 pub type V0 {
   Ok(value: String, inner: Int)
@@ -36,9 +36,9 @@ pub fn main() {
   echo {
     let z = default
     case fn(v2, v3) { Ok("data", 2) }(4, False) {
-      item -> 2 - k_tag
+      item -> 2 - tag_value
       Ok(_, _) -> 2
-      Ok(k_pi, 0 as whole) -> {
+      Ok(pi_value, 0 as whole) -> {
         let rest = True
         let delete = rest
         0
@@ -49,7 +49,7 @@ pub fn main() {
     "x" <> rest -> {
       {
         2.0
-      } +. k_e
+      } +. euler_value
     } -. {
       0.1
     }
@@ -57,7 +57,7 @@ pub fn main() {
       inner -> 0.0
       inner -> 0.5
     }
-    "x" <> item | "a" <> item -> k_pi
+    "x" <> item | "a" <> item -> pi_value
     _ -> 0.1
   }
   echo "b"
@@ -73,7 +73,7 @@ pub fn main() {
       let value = fn(v4, v5) { v5 }(10, "b")
       {
         let v = s
-        let k_tag = s
+        let tag_value = s
         default
       }
     }

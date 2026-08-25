@@ -1,5 +1,5 @@
-pub const k_seed: Bool = False
-pub const k_golden: Bool = True
+pub const seed_value: Bool = False
+pub const golden_value: Bool = True
 
 fn spin(n: Int, acc: Int) -> Int {
   case n <= 0 {

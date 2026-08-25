@@ -1,4 +1,4 @@
-pub const k_tag: Bool = True
+pub const tag_value: Bool = True
 
 pub type V0 {
   Cv1
@@ -36,16 +36,16 @@ fn arguments(item: List(Int), v10: V0, v11: #(Int, List(Int))) -> List(Int) {
 }
 
 pub fn main() {
-  let k_tag = [7, 4]
-  echo arguments(k_tag, Cv1, case k_tag {
+  let tag_value = [7, 4]
+  echo arguments(tag_value, Cv1, case tag_value {
     [] as whole -> #(42, [])
     [4, _, ..] -> #(100, [10])
-    [k_tag] -> #(7, [])
+    [tag_value] -> #(7, [])
     _ -> #(3, [])
   })
   echo case "constructor" {
     a -> {
-      let k_tag = {
+      let tag_value = {
         0.0
       } +. {
         2.0
@@ -59,7 +59,7 @@ pub fn main() {
       } {
       b -> {
         let default = 4
-        let k_tag = "bc"
+        let tag_value = "bc"
         [7, 1]
       }
       item -> [100, 5]

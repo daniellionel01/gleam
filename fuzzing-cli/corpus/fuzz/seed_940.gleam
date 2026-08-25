@@ -1,6 +1,6 @@
-pub const k_seed: Bool = False
-pub const k_golden: Int = 42
-pub const k_tag: Int = 4
+pub const seed_value: Bool = False
+pub const golden_value: Int = 42
+pub const tag_value: Int = 4
 
 fn spin(n: Int, acc: Int) -> Int {
   case n <= 0 {
@@ -31,7 +31,7 @@ case [7] {
 }
 
 pub fn main() {
-  let k_seed = fn(v2) { {
+  let seed_value = fn(v2) { {
     let s = "b"
     let x = False
     5

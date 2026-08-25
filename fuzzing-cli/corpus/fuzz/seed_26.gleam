@@ -1,4 +1,4 @@
-pub const k_limit: Float = 1.0
+pub const limit_value: Float = 1.0
 
 pub type V0 {
   Cv1
@@ -49,8 +49,8 @@ pub fn main() {
     }
   } && {
     case Cv2, {
-        let k_limit = True
-        let k_limit = []
+        let limit_value = True
+        let limit_value = []
         0
       } {
       _, 6 -> False
@@ -63,7 +63,7 @@ pub fn main() {
     3 as whole if whole == 3 -> 1.0
     a -> {
       let x = 10
-      fn(v11) { k_limit }("data")
+      fn(v11) { limit_value }("data")
     }
   }
   echo {

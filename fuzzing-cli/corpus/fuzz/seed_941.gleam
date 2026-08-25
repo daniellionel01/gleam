@@ -1,5 +1,5 @@
-pub const k_limit: Bool = True
-pub const k_e: Int = 7
+pub const limit_value: Bool = True
+pub const euler_value: Int = 7
 
 pub type V0 {
   Cv1(value: List(Int), inner: Int)
@@ -39,5 +39,5 @@ fn f2(y: #(Float, Float)) -> Int {
 
 pub fn main() {
   echo [42]
-  echo k_e
+  echo euler_value
 }
