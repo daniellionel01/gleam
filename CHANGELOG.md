@@ -247,6 +247,11 @@
   actually required.
   ([John Downey](https://github.com/jtdowney))
 
+- Fixed a bug where on the JavaScript target a UTF-8, UTF-16 or UTF-32
+  wildcard segment such as `<<_:utf8>>` would match against any bit array
+  instead of only those containing a valid sequence.
+  ([daniellionel01](https://github.com/daniellionel01))
+
 ## v1.18.1 - 2026-08-01
 
 - Fixed a bug where the Erlang code generator would generate wrong code when
