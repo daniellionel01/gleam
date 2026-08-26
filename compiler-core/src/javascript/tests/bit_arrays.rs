@@ -339,6 +339,48 @@ pub fn go(x) {
 }
 
 #[test]
+fn match_case_utf16_wildcard() {
+    assert_js!(
+        r#"
+pub fn go(x) {
+  case x {
+    <<_:utf16>> -> 1
+    _ -> 2
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn match_case_utf16_little_wildcard() {
+    assert_js!(
+        r#"
+pub fn go(x) {
+  case x {
+    <<_:utf16-little>> -> 1
+    _ -> 2
+  }
+}
+"#,
+    );
+}
+
+#[test]
+fn match_case_utf32_wildcard() {
+    assert_js!(
+        r#"
+pub fn go(x) {
+  case x {
+    <<_:utf32>> -> 1
+    _ -> 2
+  }
+}
+"#,
+    );
+}
+
+#[test]
 fn utf8_codepoint() {
     assert_js!(
         r#"

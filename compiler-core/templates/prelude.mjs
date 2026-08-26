@@ -1268,10 +1268,6 @@ let utf8Decoder;
 /**
  * Checks that a bit array is a well-formed UTF-8 byte sequence.
  *
- * The bit array must be byte aligned. The byte sequence must contain one
- * or more complete codepoints with no partial sequence at the end. An
- * empty bit array is well-formed.
- *
  * @param {BitArray} bitArray
  * @returns {boolean}
  */
@@ -1286,6 +1282,41 @@ export function isUtf8(bitArray) {
   // `fatal: true` makes the decoder throw on invalid bytes.
   try {
     utf8Decoder.decode(bitArray.rawBuffer);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+/** @type {TextDecoder | undefined} */
+let utf16BeDecoder;
+/** @type {TextDecoder | undefined} */
+let utf16LeDecoder;
+
+/**
+ * Checks that a bit array is a well-formed UTF-16 code unit sequence.
+ *
+ * @param {BitArray} bitArray
+ * @param {boolean} isBigEndian
+ * @returns {boolean}
+ */
+export function isUtf16(bitArray, isBigEndian) {
+  // Unaligned bit arrays cannot be UTF-16.
+  if (bitArray.bitOffset !== 0 || bitArray.bitSize % 16 !== 0) {
+    return false;
+  }
+
+  let decoder;
+  if (isBigEndian) {
+    utf16BeDecoder ??= new TextDecoder("utf-16be", { fatal: true });
+    decoder = utf16BeDecoder;
+  } else {
+    utf16LeDecoder ??= new TextDecoder("utf-16le", { fatal: true });
+    decoder = utf16LeDecoder;
+  }
+
+  try {
+    decoder.decode(bitArray.rawBuffer);
   } catch {
     return false;
   }

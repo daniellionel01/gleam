@@ -330,7 +330,9 @@ impl Branch {
                             | BitArrayTest::CatchAllIsBytes { .. }
                             | BitArrayTest::ReadSizeIsNotNegative { .. }
                             | BitArrayTest::SegmentIsFiniteFloat { .. }
-                            | BitArrayTest::IsUtf8 => return true,
+                            | BitArrayTest::IsUtf8
+                            | BitArrayTest::IsUtf16 { .. }
+                            | BitArrayTest::IsUtf32 => return true,
                         },
 
                         // If a bit array pattern has no tests then it's always
@@ -606,7 +608,9 @@ impl Pattern {
                         | BitArrayTest::CatchAllIsBytes { .. }
                         | BitArrayTest::ReadSizeIsNotNegative { .. }
                         | BitArrayTest::SegmentIsFiniteFloat { .. }
-                        | BitArrayTest::IsUtf8 => None,
+                        | BitArrayTest::IsUtf8
+                        | BitArrayTest::IsUtf16 { .. }
+                        | BitArrayTest::IsUtf32 => None,
 
                         BitArrayTest::Match(MatchTest { value, read_action }) => {
                             value.is_impossible_segment(read_action)
@@ -1034,6 +1038,25 @@ pub enum BitArrayTest {
     /// target as well.
     ///
     IsUtf8,
+
+    /// This test checks that a bit array contains a well-formed UTF-16 code
+    /// unit sequence.
+    ///
+    /// We need this check as the Erlang target will not match with a UTF-16
+    /// segment (like `<<_:utf16>>`) on a bit array that is not a valid
+    /// UTF-16 sequence, and we must replicate the same behaviour on the
+    /// JavaScript target as well.
+    ///
+    IsUtf16 {
+        endianness: Endianness,
+    },
+
+    /// This test checks that a bit array is a whole number of UTF-32 code
+    /// units. UTF-32 has a fixed width of 32 bits per code unit, so a
+    /// wildcard UTF-32 segment (like `<<_:utf32>>`) only requires a size
+    /// check, not a well-formedness check.
+    ///
+    IsUtf32,
 }
 
 impl BitArrayTest {
@@ -1048,7 +1071,9 @@ impl BitArrayTest {
             | BitArrayTest::CatchAllIsBytes { .. }
             | BitArrayTest::ReadSizeIsNotNegative { .. }
             | BitArrayTest::SegmentIsFiniteFloat { .. }
-            | BitArrayTest::IsUtf8 => false,
+            | BitArrayTest::IsUtf8
+            | BitArrayTest::IsUtf16 { .. }
+            | BitArrayTest::IsUtf32 => false,
         }
     }
 
@@ -1079,7 +1104,9 @@ impl BitArrayTest {
                 references
             }
 
-            BitArrayTest::IsUtf8 => vec![],
+            BitArrayTest::IsUtf8
+            | BitArrayTest::IsUtf16 { .. }
+            | BitArrayTest::IsUtf32 => vec![],
         }
     }
 }
@@ -1535,6 +1562,15 @@ impl BitArrayTest {
 
             (BitArrayTest::IsUtf8, BitArrayTest::IsUtf8) => true,
             (BitArrayTest::IsUtf8, _) => false,
+
+            (
+                BitArrayTest::IsUtf16 { endianness: one },
+                BitArrayTest::IsUtf16 { endianness: other },
+            ) => one == other,
+            (BitArrayTest::IsUtf16 { .. }, _) => false,
+
+            (BitArrayTest::IsUtf32, BitArrayTest::IsUtf32) => true,
+            (BitArrayTest::IsUtf32, _) => false,
         }
     }
 
@@ -3759,15 +3795,20 @@ impl CaseToCompile {
             // be a catch all that matches with any number of remaining bits.
             let is_last_segment = i + 1 == segments_count;
 
-            // A final wildcard segment with the utf8 option is validated by
-            // an `IsUtf8` test on the whole bit array rather than a size
-            // check, since the well-formedness of a UTF-8 sequence is not a
+            // A final wildcard segment with a utf option is validated by an
+            // utf-specific test on the whole bit array rather than a size
+            // check, since the well-formedness of a UTF sequence is not a
             // question of how many bits it contains.
-            if is_last_segment
-                && matches!(segment.value.as_ref(), ast::Pattern::Discard { .. })
-                && segment.has_utf8_option()
-            {
+            let is_last_discard = is_last_segment
+                && matches!(segment.value.as_ref(), ast::Pattern::Discard { .. });
+            if is_last_discard && segment.has_utf8_option() {
                 tests.push_back(BitArrayTest::IsUtf8);
+            } else if is_last_discard && segment.has_utf16_option() {
+                tests.push_back(BitArrayTest::IsUtf16 {
+                    endianness: segment.endianness(),
+                });
+            } else if is_last_discard && segment.has_utf32_option() {
+                tests.push_back(BitArrayTest::IsUtf32);
             } else {
                 match &segment_size {
                     ReadSize::RemainingBits => (),

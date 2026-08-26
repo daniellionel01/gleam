@@ -325,6 +325,10 @@ impl<'a, 'doc> Generator<'a> {
             self.register_prelude_usage(arena, &mut imports, "isUtf8", None);
         }
 
+        if self.tracker.is_utf16_used {
+            self.register_prelude_usage(arena, &mut imports, "isUtf16", None);
+        }
+
         for (variant, alias) in self.tracker.variant_constants_used.iter() {
             let path = self.import_path(&variant.package, &variant.module);
             let member = Member {
@@ -1591,6 +1595,7 @@ pub(crate) struct UsageTracker {
     pub codepoint_utf32_bit_array_segment_used: bool,
     pub float_bit_array_segment_used: bool,
     pub is_utf8_used: bool,
+    pub is_utf16_used: bool,
     pub echo_used: bool,
     /// Keeps track of each time a fieldless variant is constructed, so we can
     /// import the singleton constant. Optionally contains an alias, if the variant

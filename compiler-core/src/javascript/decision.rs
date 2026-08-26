@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2025 The Gleam contributors
 
 use super::{
-    INDENT, bit_array_segment_int_value_to_bytes,
+    INDENT, bit_array_segment_int_value_to_bytes, bool,
     expression::{self, Generator, Ordering, Scope, float, float_from_value},
 };
 use crate::{
@@ -1615,6 +1615,26 @@ impl<'generator, 'module, 'a, 'doc> Variables<'generator, 'module, 'a, 'doc> {
                         CLOSE_PAREN_DOCUMENT
                     ]
                 }
+
+                BitArrayTest::IsUtf16 { endianness } => {
+                    self.expression_generator.tracker.is_utf16_used = true;
+                    docvec![
+                        arena,
+                        IS_UTF16_OPEN_PAREN_DOCUMENT,
+                        value,
+                        COMMA_SPACE_DOCUMENT,
+                        bool(endianness.is_big()),
+                        CLOSE_PAREN_DOCUMENT
+                    ]
+                }
+
+                BitArrayTest::IsUtf32 => docvec![
+                    arena,
+                    value,
+                    DOT_BIT_SIZE_MODULO_32_DOCUMENT,
+                    SPACE_TRIPLE_EQUAL_SPACE_DOCUMENT,
+                    ZERO_DOCUMENT,
+                ],
 
                 // Here we need to make sure that the bit array has a specific
                 // size.

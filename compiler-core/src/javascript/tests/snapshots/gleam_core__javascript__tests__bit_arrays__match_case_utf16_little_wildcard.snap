@@ -1,0 +1,24 @@
+---
+source: compiler-core/src/javascript/tests/bit_arrays.rs
+expression: "\npub fn go(x) {\n  case x {\n    <<_:utf16-little>> -> 1\n    _ -> 2\n  }\n}\n"
+---
+----- SOURCE CODE
+
+pub fn go(x) {
+  case x {
+    <<_:utf16-little>> -> 1
+    _ -> 2
+  }
+}
+
+
+----- COMPILED JAVASCRIPT
+import { isUtf16 } from "../gleam.mjs";
+
+export function go(x) {
+  if (isUtf16(x, false)) {
+    return 1;
+  } else {
+    return 2;
+  }
+}

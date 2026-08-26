@@ -150,6 +150,8 @@ export function codepointBits(codepoint: UtfCodepoint): Uint8Array;
 
 export function isUtf8(bitArray: BitArray): boolean;
 
+export function isUtf16(bitArray: BitArray, isBigEndian: boolean): boolean;
+
 /** @deprecated */
 export function sizedFloat(
   value: number,

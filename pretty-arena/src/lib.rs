@@ -876,6 +876,8 @@ const_str!(SIZED_INT_OPEN_PAREN_DOCUMENT, "sizedInt(", 9);
 const_str!(SIZED_FLOAT_OPEN_PAREN_DOCUMENT, "sizedFloat(", 11);
 const_str!(STRING_BITS_OPEN_PAREN_DOCUMENT, "stringBits(", 11);
 const_str!(IS_UTF8_OPEN_PAREN_DOCUMENT, "isUtf8(", 7);
+const_str!(IS_UTF16_OPEN_PAREN_DOCUMENT, "isUtf16(", 8);
+const_str!(DOT_BIT_SIZE_MODULO_32_DOCUMENT, ".bitSize % 32", 14);
 const_str!(STRING_TO_UTF16_OPEN_PAREN_DOCUMENT, "stringToUtf16(", 14);
 const_str!(STRING_TO_UTF32_OPEN_PAREN_DOCUMENT, "stringToUtf32(", 14);
 const_str!(
