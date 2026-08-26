@@ -148,6 +148,8 @@ export function stringBits(string: string): Uint8Array;
 /** @deprecated */
 export function codepointBits(codepoint: UtfCodepoint): Uint8Array;
 
+export function isUtf8(bitArray: BitArray): boolean;
+
 /** @deprecated */
 export function sizedFloat(
   value: number,
