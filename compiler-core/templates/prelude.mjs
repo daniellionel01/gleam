@@ -1,13 +1,15 @@
 export class CustomType {
   withFields(fields) {
-    let properties = Object.keys(this).map((label) => (label in fields ? fields[label] : this[label]));
+    let properties = Object.keys(this).map((label) =>
+      label in fields ? fields[label] : this[label],
+    );
     return new this.constructor(...properties);
   }
 }
 
 export class List {
   static fromArray(array, tail) {
-    return toList(array, tail);
+    return toList(array, tail)
   }
 
   [Symbol.iterator]() {
@@ -46,7 +48,7 @@ export function prepend(element, tail) {
 }
 
 export function toList(elements, tail) {
-  let t = tail || List$Empty$const;
+  let t = tail || List$Empty$const
   for (let i = elements.length - 1; i >= 0; --i) {
     t = new NonEmpty(elements[i], t);
   }
@@ -71,7 +73,7 @@ class ListIterator {
   }
 }
 
-export class Empty extends List {}
+export class Empty extends List { }
 export const List$Empty$const = new Empty();
 export const List$Empty = () => List$Empty$const;
 export const List$isEmpty = (value) => value instanceof Empty;
@@ -148,7 +150,9 @@ export class BitArray {
    */
   constructor(buffer, bitSize, bitOffset) {
     if (!(buffer instanceof Uint8Array)) {
-      throw globalThis.Error("BitArray can only be constructed from a Uint8Array");
+      throw globalThis.Error(
+        "BitArray can only be constructed from a Uint8Array",
+      );
     }
 
     this.bitSize = bitSize ?? buffer.length * 8;
@@ -162,7 +166,9 @@ export class BitArray {
 
     // Validate the bit offset
     if (this.bitOffset < 0 || this.bitOffset > 7) {
-      throw globalThis.Error(`BitArray bit offset is invalid: ${this.bitOffset}`);
+      throw globalThis.Error(
+        `BitArray bit offset is invalid: ${this.bitOffset}`,
+      );
     }
 
     // Validate the length of the buffer
@@ -233,8 +239,16 @@ export class BitArray {
       // Compare any trailing bits
       const trailingBitsCount = this.bitSize % 8;
       if (trailingBitsCount) {
-        const a = bitArrayByteAt(this.rawBuffer, this.bitOffset, wholeByteCount);
-        const b = bitArrayByteAt(other.rawBuffer, other.bitOffset, wholeByteCount);
+        const a = bitArrayByteAt(
+          this.rawBuffer,
+          this.bitOffset,
+          wholeByteCount,
+        );
+        const b = bitArrayByteAt(
+          other.rawBuffer,
+          other.bitOffset,
+          wholeByteCount,
+        );
 
         const unusedLowBitCount = 8 - trailingBitsCount;
         if (a >> unusedLowBitCount !== b >> unusedLowBitCount) {
@@ -255,7 +269,9 @@ export class BitArray {
    */
   get buffer() {
     if (this.bitOffset !== 0 || this.bitSize % 8 !== 0) {
-      throw new globalThis.Error("BitArray.buffer does not support unaligned bit arrays");
+      throw new globalThis.Error(
+        "BitArray.buffer does not support unaligned bit arrays",
+      );
     }
 
     return this.rawBuffer;
@@ -270,17 +286,23 @@ export class BitArray {
    */
   get length() {
     if (this.bitOffset !== 0 || this.bitSize % 8 !== 0) {
-      throw new globalThis.Error("BitArray.length does not support unaligned bit arrays");
+      throw new globalThis.Error(
+        "BitArray.length does not support unaligned bit arrays",
+      );
     }
 
     return this.rawBuffer.length;
   }
 }
 
-export const BitArray$BitArray = (buffer, bitSize, bitOffset) => new BitArray(buffer, bitSize, bitOffset);
+export const BitArray$BitArray = (buffer, bitSize, bitOffset) =>
+  new BitArray(buffer, bitSize, bitOffset);
 export const BitArray$isBitArray = (value) => value instanceof BitArray;
 export const BitArray$BitArray$data = (bitArray) => {
-  if (bitArray.bitSize % 8 !== 0) throw new globalThis.Error("BitArray$BitArray$data called on un-aligned bit array");
+  if (bitArray.bitSize % 8 !== 0)
+    throw new globalThis.Error(
+      "BitArray$BitArray$data called on un-aligned bit array",
+    );
   const array = bitArray.rawBuffer;
   return new DataView(array.buffer, array.byteOffset, bitArray.byteSize);
 };
@@ -351,7 +373,11 @@ export function bitArraySlice(bitArray, start, end) {
   if (startByteIndex === 0 && byteLength === bitArray.rawBuffer.byteLength) {
     buffer = bitArray.rawBuffer;
   } else {
-    buffer = new Uint8Array(bitArray.rawBuffer.buffer, bitArray.rawBuffer.byteOffset + startByteIndex, byteLength);
+    buffer = new Uint8Array(
+      bitArray.rawBuffer.buffer,
+      bitArray.rawBuffer.byteOffset + startByteIndex,
+      byteLength,
+    );
   }
 
   return new BitArray(buffer, end - start, start % 8);
@@ -377,7 +403,9 @@ export function bitArraySliceToFloat(bitArray, start, end, isBigEndian) {
 
   // Check size is valid
   if (floatSize !== 16 && floatSize !== 32 && floatSize !== 64) {
-    const msg = `Sized floats must be 16-bit, 32-bit or 64-bit, got size of ` + `${floatSize} bits`;
+    const msg =
+      `Sized floats must be 16-bit, 32-bit or 64-bit, got size of ` +
+      `${floatSize} bits`;
     throw new globalThis.Error(msg);
   }
 
@@ -388,7 +416,10 @@ export function bitArraySliceToFloat(bitArray, start, end, isBigEndian) {
   // If the bit range is byte aligned then the float can be read directly out
   // of the existing buffer
   if (isStartByteAligned) {
-    const view = new DataView(bitArray.rawBuffer.buffer, bitArray.rawBuffer.byteOffset + start / 8);
+    const view = new DataView(
+      bitArray.rawBuffer.buffer,
+      bitArray.rawBuffer.byteOffset + start / 8,
+    );
 
     if (floatSize === 64) {
       return view.getFloat64(0, !isBigEndian);
@@ -403,7 +434,11 @@ export function bitArraySliceToFloat(bitArray, start, end, isBigEndian) {
   const alignedBytes = new Uint8Array(floatSize / 8);
   const byteOffset = Math.trunc(start / 8);
   for (let i = 0; i < alignedBytes.length; i++) {
-    alignedBytes[i] = bitArrayByteAt(bitArray.rawBuffer, start % 8, byteOffset + i);
+    alignedBytes[i] = bitArrayByteAt(
+      bitArray.rawBuffer,
+      start % 8,
+      byteOffset + i,
+    );
   }
 
   // Read the float out of the aligned buffer
@@ -428,7 +463,13 @@ export function bitArraySliceToFloat(bitArray, start, end, isBigEndian) {
  * @param {boolean} isSigned
  * @returns {number}
  */
-export function bitArraySliceToInt(bitArray, start, end, isBigEndian, isSigned) {
+export function bitArraySliceToInt(
+  bitArray,
+  start,
+  end,
+  isBigEndian,
+  isSigned,
+) {
   bitArrayValidateRange(bitArray, start, end);
 
   if (start === end) {
@@ -444,7 +485,13 @@ export function bitArraySliceToInt(bitArray, start, end, isBigEndian, isSigned) 
   // If the slice is byte-aligned then there is no need to handle unaligned
   // slices, meaning a simpler and faster implementation can be used instead
   if (isStartByteAligned && isEndByteAligned) {
-    return intFromAlignedSlice(bitArray, start / 8, end / 8, isBigEndian, isSigned);
+    return intFromAlignedSlice(
+      bitArray,
+      start / 8,
+      end / 8,
+      isBigEndian,
+      isSigned,
+    );
   }
 
   const size = end - start;
@@ -457,7 +504,8 @@ export function bitArraySliceToInt(bitArray, start, end, isBigEndian, isSigned) 
     const mask = 0xff >> (start % 8);
     const unusedLowBitCount = (8 - (end % 8)) % 8;
 
-    let value = (bitArray.rawBuffer[startByteIndex] & mask) >> unusedLowBitCount;
+    let value =
+      (bitArray.rawBuffer[startByteIndex] & mask) >> unusedLowBitCount;
 
     // For signed integers, if the high bit is set reinterpret as two's
     // complement
@@ -475,9 +523,21 @@ export function bitArraySliceToInt(bitArray, start, end, isBigEndian, isSigned) 
   // boundary in the input array
 
   if (size <= 53) {
-    return intFromUnalignedSliceUsingNumber(bitArray.rawBuffer, start, end, isBigEndian, isSigned);
+    return intFromUnalignedSliceUsingNumber(
+      bitArray.rawBuffer,
+      start,
+      end,
+      isBigEndian,
+      isSigned,
+    );
   } else {
-    return intFromUnalignedSliceUsingBigInt(bitArray.rawBuffer, start, end, isBigEndian, isSigned);
+    return intFromUnalignedSliceUsingBigInt(
+      bitArray.rawBuffer,
+      start,
+      end,
+      isBigEndian,
+      isSigned,
+    );
   }
 }
 
@@ -516,7 +576,7 @@ export function toBitArray(segments) {
       return new BitArray(segment);
     }
 
-    return new BitArray(new Uint8Array(/** @type {number[]} */ (segments)));
+    return new BitArray(new Uint8Array(/** @type {number[]} */(segments)));
   }
 
   // Count the total number of bits and check if all segments are numbers, i.e.
@@ -538,7 +598,7 @@ export function toBitArray(segments) {
   // If all segments are numbers then pass the segments array directly to the
   // Uint8Array constructor
   if (areAllSegmentsNumbers) {
-    return new BitArray(new Uint8Array(/** @type {number[]} */ (segments)));
+    return new BitArray(new Uint8Array(/** @type {number[]} */(segments)));
   }
 
   // Pack the segments into a Uint8Array
@@ -566,7 +626,11 @@ export function toBitArray(segments) {
           buffer[lastByteIndex] <<= 8 - trailingBitsCount;
         }
       } else {
-        appendUnalignedBits(segment.rawBuffer, segment.bitSize, segment.bitOffset);
+        appendUnalignedBits(
+          segment.rawBuffer,
+          segment.bitSize,
+          segment.bitOffset,
+        );
       }
     } else if (segment instanceof Uint8Array) {
       if (isCursorByteAligned) {
@@ -791,9 +855,21 @@ function intFromAlignedSlice(bitArray, start, end, isBigEndian, isSigned) {
   const byteSize = end - start;
 
   if (byteSize <= 6) {
-    return intFromAlignedSliceUsingNumber(bitArray.rawBuffer, start, end, isBigEndian, isSigned);
+    return intFromAlignedSliceUsingNumber(
+      bitArray.rawBuffer,
+      start,
+      end,
+      isBigEndian,
+      isSigned,
+    );
   } else {
-    return intFromAlignedSliceUsingBigInt(bitArray.rawBuffer, start, end, isBigEndian, isSigned);
+    return intFromAlignedSliceUsingBigInt(
+      bitArray.rawBuffer,
+      start,
+      end,
+      isBigEndian,
+      isSigned,
+    );
   }
 }
 
@@ -808,7 +884,13 @@ function intFromAlignedSlice(bitArray, start, end, isBigEndian, isSigned) {
  * @param {boolean} isSigned
  * @returns {number}
  */
-function intFromAlignedSliceUsingNumber(buffer, start, end, isBigEndian, isSigned) {
+function intFromAlignedSliceUsingNumber(
+  buffer,
+  start,
+  end,
+  isBigEndian,
+  isSigned,
+) {
   const byteSize = end - start;
 
   let value = 0;
@@ -849,7 +931,13 @@ function intFromAlignedSliceUsingNumber(buffer, start, end, isBigEndian, isSigne
  * @param {boolean} isSigned
  * @returns {number}
  */
-function intFromAlignedSliceUsingBigInt(buffer, start, end, isBigEndian, isSigned) {
+function intFromAlignedSliceUsingBigInt(
+  buffer,
+  start,
+  end,
+  isBigEndian,
+  isSigned,
+) {
   const byteSize = end - start;
 
   let value = 0n;
@@ -895,7 +983,13 @@ function intFromAlignedSliceUsingBigInt(buffer, start, end, isBigEndian, isSigne
  * @param {boolean} isSigned
  * @returns {number}
  */
-function intFromUnalignedSliceUsingNumber(buffer, start, end, isBigEndian, isSigned) {
+function intFromUnalignedSliceUsingNumber(
+  buffer,
+  start,
+  end,
+  isBigEndian,
+  isSigned,
+) {
   const isStartByteAligned = start % 8 === 0;
 
   let size = end - start;
@@ -953,7 +1047,9 @@ function intFromUnalignedSliceUsingNumber(buffer, start, end, isBigEndian, isSig
 
       // Extract whole bytes
       while (size >= 8) {
-        const byte = (buffer[byteIndex] << highBitsCount) | (buffer[byteIndex + 1] >> lowBitsCount);
+        const byte =
+          (buffer[byteIndex] << highBitsCount) |
+          (buffer[byteIndex + 1] >> lowBitsCount);
 
         value += (byte & 0xff) * scale;
 
@@ -967,7 +1063,9 @@ function intFromUnalignedSliceUsingNumber(buffer, start, end, isBigEndian, isSig
       if (size > 0) {
         const lowBitsUsed = size - Math.max(0, size - lowBitsCount);
 
-        let trailingByte = (buffer[byteIndex] & ((1 << lowBitsCount) - 1)) >> (lowBitsCount - lowBitsUsed);
+        let trailingByte =
+          (buffer[byteIndex] & ((1 << lowBitsCount) - 1)) >>
+          (lowBitsCount - lowBitsUsed);
 
         size -= lowBitsUsed;
 
@@ -1007,7 +1105,13 @@ function intFromUnalignedSliceUsingNumber(buffer, start, end, isBigEndian, isSig
  * @param {boolean} isSigned
  * @returns {number}
  */
-function intFromUnalignedSliceUsingBigInt(buffer, start, end, isBigEndian, isSigned) {
+function intFromUnalignedSliceUsingBigInt(
+  buffer,
+  start,
+  end,
+  isBigEndian,
+  isSigned,
+) {
   const isStartByteAligned = start % 8 === 0;
 
   let size = end - start;
@@ -1065,7 +1169,9 @@ function intFromUnalignedSliceUsingBigInt(buffer, start, end, isBigEndian, isSig
 
       // Extract whole bytes
       while (size >= 8) {
-        const byte = (buffer[byteIndex] << highBitsCount) | (buffer[byteIndex + 1] >> lowBitsCount);
+        const byte =
+          (buffer[byteIndex] << highBitsCount) |
+          (buffer[byteIndex + 1] >> lowBitsCount);
 
         value += BigInt(byte & 0xff) << shift;
 
@@ -1079,7 +1185,9 @@ function intFromUnalignedSliceUsingBigInt(buffer, start, end, isBigEndian, isSig
       if (size > 0) {
         const lowBitsUsed = size - Math.max(0, size - lowBitsCount);
 
-        let trailingByte = (buffer[byteIndex] & ((1 << lowBitsCount) - 1)) >> (lowBitsCount - lowBitsUsed);
+        let trailingByte =
+          (buffer[byteIndex] & ((1 << lowBitsCount) - 1)) >>
+          (lowBitsCount - lowBitsUsed);
 
         size -= lowBitsUsed;
 
@@ -1178,7 +1286,8 @@ function numberToFp16Uint(value, isBigEndian) {
       exponent += 1;
     }
 
-    buffer[1] = (sign << 7) | ((exponent & 0x1f) << 2) | ((fraction >> 8) & 0x03);
+    buffer[1] =
+      (sign << 7) | ((exponent & 0x1f) << 2) | ((fraction >> 8) & 0x03);
     buffer[0] = fraction & 0xff;
   }
 
@@ -1232,8 +1341,15 @@ function isNegativeZero(value) {
  * @param {number} end
  */
 function bitArrayValidateRange(bitArray, start, end) {
-  if (start < 0 || start > bitArray.bitSize || end < start || end > bitArray.bitSize) {
-    const msg = `Invalid bit array slice: start = ${start}, end = ${end}, ` + `bit size = ${bitArray.bitSize}`;
+  if (
+    start < 0 ||
+    start > bitArray.bitSize ||
+    end < start ||
+    end > bitArray.bitSize
+  ) {
+    const msg =
+      `Invalid bit array slice: start = ${start}, end = ${end}, ` +
+      `bit size = ${bitArray.bitSize}`;
     throw new globalThis.Error(msg);
   }
 }
@@ -1263,7 +1379,7 @@ export function codepointBits(codepoint) {
 }
 
 /**
- * Number of trailing bytes in a UTF-8 sequence, by lead byte.
+ * The number of trailing bytes for each UTF-8 lead byte.
  */
 const utf8TrailingBytes = new Uint8Array([
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -1277,7 +1393,7 @@ const utf8TrailingBytes = new Uint8Array([
 ]);
 
 /**
- * Checks that a bit array is a well-formed UTF-8 byte sequence.
+ * Returns whether a bit array contains valid UTF-8.
  *
  * @param {BitArray} bitArray
  * @returns {boolean}
@@ -1348,7 +1464,7 @@ export function isUtf8(bitArray) {
 }
 
 /**
- * Checks that a bit array is a well-formed UTF-16 code unit sequence.
+ * Returns whether a bit array contains valid UTF-16.
  *
  * @param {BitArray} bitArray
  * @param {boolean} isBigEndian
@@ -1519,7 +1635,7 @@ export function isEqual(x, y) {
       try {
         if (a.equals(b)) continue;
         else return false;
-      } catch {}
+      } catch { }
     }
 
     let [keys, get] = getters(a);
@@ -1565,7 +1681,9 @@ function unequalMaps(a, b) {
 }
 
 function unequalSets(a, b) {
-  return a instanceof Set && (a.size != b.size || [...a].some((e) => !b.has(e)));
+  return (
+    a instanceof Set && (a.size != b.size || [...a].some((e) => !b.has(e)))
+  );
 }
 
 function unequalRegExps(a, b) {
@@ -1577,7 +1695,8 @@ function isObject(a) {
 }
 
 function structurallyCompatibleObjects(a, b) {
-  if (typeof a !== "object" && typeof b !== "object" && (!a || !b)) return false;
+  if (typeof a !== "object" && typeof b !== "object" && (!a || !b))
+    return false;
 
   let nonstructural = [Promise, WeakSet, WeakMap, Function];
   if (nonstructural.some((c) => a instanceof c)) return false;
