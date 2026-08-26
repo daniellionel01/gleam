@@ -1262,8 +1262,19 @@ export function codepointBits(codepoint) {
   return stringBits(String.fromCodePoint(codepoint.value));
 }
 
-/** @type {TextDecoder | undefined} */
-let utf8Decoder;
+/**
+ * Number of trailing bytes in a UTF-8 sequence, by lead byte.
+ */
+const utf8TrailingBytes = new Uint8Array([
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+  9, 9, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 9, 9, 9, 9, 9, 9, 9, 9,
+]);
 
 /**
  * Checks that a bit array is a well-formed UTF-8 byte sequence.
@@ -1272,26 +1283,69 @@ let utf8Decoder;
  * @returns {boolean}
  */
 export function isUtf8(bitArray) {
-  // Unaligned bit arrays cannot be UTF-8.
   if (bitArray.bitOffset !== 0 || bitArray.bitSize % 8 !== 0) {
     return false;
   }
 
-  utf8Decoder ??= new TextDecoder("utf-8", { fatal: true });
-
-  // `fatal: true` makes the decoder throw on invalid bytes.
-  try {
-    utf8Decoder.decode(bitArray.rawBuffer);
-  } catch {
-    return false;
+  if (bitArray.bitSize === 0) {
+    return true;
   }
+
+  const bytes = bitArray.rawBuffer;
+  const end = bytes.length;
+  let pos = 0;
+
+  while (pos < end) {
+    const lead = bytes[pos];
+    const trailing = utf8TrailingBytes[lead];
+
+    if (trailing === 9) {
+      return false;
+    }
+
+    if (pos + 1 + trailing > end) {
+      return false;
+    }
+
+    for (let i = 1; i <= trailing; i++) {
+      if ((bytes[pos + i] & 0xc0) !== 0x80) {
+        return false;
+      }
+    }
+
+    if (lead === 0xe0 && bytes[pos + 1] < 0xa0) {
+      return false;
+    }
+    if (lead === 0xf0 && bytes[pos + 1] < 0x90) {
+      return false;
+    }
+
+    let codepoint;
+    if (trailing === 0) {
+      codepoint = lead;
+    } else if (trailing === 1) {
+      codepoint = ((lead & 0x1f) << 6) | (bytes[pos + 1] & 0x3f);
+    } else if (trailing === 2) {
+      codepoint = ((lead & 0x0f) << 12) | ((bytes[pos + 1] & 0x3f) << 6) | (bytes[pos + 2] & 0x3f);
+    } else {
+      codepoint =
+        ((lead & 0x07) << 18) |
+        ((bytes[pos + 1] & 0x3f) << 12) |
+        ((bytes[pos + 2] & 0x3f) << 6) |
+        (bytes[pos + 3] & 0x3f);
+    }
+    if (codepoint >= 0xd800 && codepoint <= 0xdfff) {
+      return false;
+    }
+    if (codepoint > 0x10ffff) {
+      return false;
+    }
+
+    pos += 1 + trailing;
+  }
+
   return true;
 }
-
-/** @type {TextDecoder | undefined} */
-let utf16BeDecoder;
-/** @type {TextDecoder | undefined} */
-let utf16LeDecoder;
 
 /**
  * Checks that a bit array is a well-formed UTF-16 code unit sequence.
@@ -1301,25 +1355,43 @@ let utf16LeDecoder;
  * @returns {boolean}
  */
 export function isUtf16(bitArray, isBigEndian) {
-  // Unaligned bit arrays cannot be UTF-16.
   if (bitArray.bitOffset !== 0 || bitArray.bitSize % 16 !== 0) {
     return false;
   }
 
-  let decoder;
-  if (isBigEndian) {
-    utf16BeDecoder ??= new TextDecoder("utf-16be", { fatal: true });
-    decoder = utf16BeDecoder;
-  } else {
-    utf16LeDecoder ??= new TextDecoder("utf-16le", { fatal: true });
-    decoder = utf16LeDecoder;
+  if (bitArray.bitSize === 0) {
+    return true;
   }
 
-  try {
-    decoder.decode(bitArray.rawBuffer);
-  } catch {
-    return false;
+  const bytes = bitArray.rawBuffer;
+  const end = bytes.length;
+  let pos = 0;
+
+  const readUnit = (offset) =>
+    isBigEndian ? (bytes[offset] << 8) | bytes[offset + 1] : bytes[offset] | (bytes[offset + 1] << 8);
+
+  while (pos + 1 < end) {
+    const w1 = readUnit(pos);
+    pos += 2;
+
+    if (w1 < 0xd800 || w1 > 0xdfff) {
+      continue;
+    }
+
+    if (w1 <= 0xdbff) {
+      if (pos + 1 >= end) {
+        return false;
+      }
+      const w2 = readUnit(pos);
+      pos += 2;
+      if (w2 < 0xdc00 || w2 > 0xdfff) {
+        return false;
+      }
+    } else {
+      return false;
+    }
   }
+
   return true;
 }
 
