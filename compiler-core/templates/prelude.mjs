@@ -1483,8 +1483,11 @@ export function isUtf16(bitArray, isBigEndian) {
   const end = bytes.length;
   let pos = 0;
 
-  const readUnit = (offset) =>
-    isBigEndian ? (bytes[offset] << 8) | bytes[offset + 1] : bytes[offset] | (bytes[offset + 1] << 8);
+  function readUnit(offset) {
+    return isBigEndian
+      ? (bytes[offset] << 8) | bytes[offset + 1]
+      : bytes[offset] | (bytes[offset + 1] << 8);
+  }
 
   while (pos + 1 < end) {
     const w1 = readUnit(pos);
