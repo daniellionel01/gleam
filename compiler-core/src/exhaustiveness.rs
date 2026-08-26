@@ -1029,32 +1029,18 @@ pub enum BitArrayTest {
         read_action: ReadAction,
     },
 
-    /// This test checks that a bit array contains a well-formed UTF-8 byte
-    /// sequence.
-    ///
-    /// We need this check as the Erlang target will not match with a UTF-8
-    /// segment (like `<<_:utf8>>`) on a bit array that is not a valid UTF-8
-    /// sequence, and we must replicate the same behaviour on the JavaScript
-    /// target as well.
+    /// This test checks that a bit array contains valid UTF-8.
     ///
     IsUtf8,
 
-    /// This test checks that a bit array contains a well-formed UTF-16 code
-    /// unit sequence.
-    ///
-    /// We need this check as the Erlang target will not match with a UTF-16
-    /// segment (like `<<_:utf16>>`) on a bit array that is not a valid
-    /// UTF-16 sequence, and we must replicate the same behaviour on the
-    /// JavaScript target as well.
+    /// This test checks that a bit array contains valid UTF-16.
     ///
     IsUtf16 {
         endianness: Endianness,
     },
 
-    /// This test checks that a bit array is a whole number of UTF-32 code
-    /// units. UTF-32 has a fixed width of 32 bits per code unit, so a
-    /// wildcard UTF-32 segment (like `<<_:utf32>>`) only requires a size
-    /// check, not a well-formedness check.
+    /// This test checks that a bit array has a whole number of UTF-32 code
+    /// units.
     ///
     IsUtf32,
 }
@@ -1104,9 +1090,7 @@ impl BitArrayTest {
                 references
             }
 
-            BitArrayTest::IsUtf8
-            | BitArrayTest::IsUtf16 { .. }
-            | BitArrayTest::IsUtf32 => vec![],
+            BitArrayTest::IsUtf8 | BitArrayTest::IsUtf16 { .. } | BitArrayTest::IsUtf32 => vec![],
         }
     }
 }
@@ -3797,8 +3781,8 @@ impl CaseToCompile {
 
             // Final wildcard segments with a UTF option are validated by a UTF
             // specific test, not a size check.
-            let is_last_discard = is_last_segment
-                && matches!(segment.value.as_ref(), ast::Pattern::Discard { .. });
+            let is_last_discard =
+                is_last_segment && matches!(segment.value.as_ref(), ast::Pattern::Discard { .. });
             if is_last_discard && segment.has_utf8_option() {
                 tests.push_back(BitArrayTest::IsUtf8);
             } else if is_last_discard && segment.has_utf16_option() {
