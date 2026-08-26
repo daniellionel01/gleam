@@ -3795,10 +3795,8 @@ impl CaseToCompile {
             // be a catch all that matches with any number of remaining bits.
             let is_last_segment = i + 1 == segments_count;
 
-            // A final wildcard segment with a utf option is validated by an
-            // utf-specific test on the whole bit array rather than a size
-            // check, since the well-formedness of a UTF sequence is not a
-            // question of how many bits it contains.
+            // Final wildcard segments with a UTF option are validated by a UTF
+            // specific test, not a size check.
             let is_last_discard = is_last_segment
                 && matches!(segment.value.as_ref(), ast::Pattern::Discard { .. });
             if is_last_discard && segment.has_utf8_option() {
