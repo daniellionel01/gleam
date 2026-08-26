@@ -1606,6 +1606,16 @@ impl<'generator, 'module, 'a, 'doc> Variables<'generator, 'module, 'a, 'doc> {
                     ]
                 }
 
+                BitArrayTest::IsUtf8 => {
+                    self.expression_generator.tracker.is_utf8_used = true;
+                    docvec![
+                        arena,
+                        IS_UTF8_OPEN_PAREN_DOCUMENT,
+                        value,
+                        CLOSE_PAREN_DOCUMENT
+                    ]
+                }
+
                 // Here we need to make sure that the bit array has a specific
                 // size.
                 BitArrayTest::Size(SizeTest { operator, size }) => {

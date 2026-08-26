@@ -3839,6 +3839,13 @@ impl<Value, Type> BitArraySegment<Value, Type> {
             .any(|x| matches!(x, BitArrayOption::Utf32 { .. }))
     }
 
+    #[must_use]
+    pub fn has_utf8_option(&self) -> bool {
+        self.options
+            .iter()
+            .any(|x| matches!(x, BitArrayOption::Utf8 { .. }))
+    }
+
     pub fn endianness(&self) -> Endianness {
         if self
             .options

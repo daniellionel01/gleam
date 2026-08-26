@@ -329,7 +329,8 @@ impl Branch {
                             | BitArrayTest::Match(_)
                             | BitArrayTest::CatchAllIsBytes { .. }
                             | BitArrayTest::ReadSizeIsNotNegative { .. }
-                            | BitArrayTest::SegmentIsFiniteFloat { .. } => return true,
+                            | BitArrayTest::SegmentIsFiniteFloat { .. }
+                            | BitArrayTest::IsUtf8 => return true,
                         },
 
                         // If a bit array pattern has no tests then it's always
@@ -604,7 +605,8 @@ impl Pattern {
                         BitArrayTest::Size(_)
                         | BitArrayTest::CatchAllIsBytes { .. }
                         | BitArrayTest::ReadSizeIsNotNegative { .. }
-                        | BitArrayTest::SegmentIsFiniteFloat { .. } => None,
+                        | BitArrayTest::SegmentIsFiniteFloat { .. }
+                        | BitArrayTest::IsUtf8 => None,
 
                         BitArrayTest::Match(MatchTest { value, read_action }) => {
                             value.is_impossible_segment(read_action)
@@ -1022,6 +1024,16 @@ pub enum BitArrayTest {
     SegmentIsFiniteFloat {
         read_action: ReadAction,
     },
+
+    /// This test checks that a bit array contains a well-formed UTF-8 byte
+    /// sequence.
+    ///
+    /// We need this check as the Erlang target will not match with a UTF-8
+    /// segment (like `<<_:utf8>>`) on a bit array that is not a valid UTF-8
+    /// sequence, and we must replicate the same behaviour on the JavaScript
+    /// target as well.
+    ///
+    IsUtf8,
 }
 
 impl BitArrayTest {
@@ -1035,7 +1047,8 @@ impl BitArrayTest {
             | BitArrayTest::Size(_)
             | BitArrayTest::CatchAllIsBytes { .. }
             | BitArrayTest::ReadSizeIsNotNegative { .. }
-            | BitArrayTest::SegmentIsFiniteFloat { .. } => false,
+            | BitArrayTest::SegmentIsFiniteFloat { .. }
+            | BitArrayTest::IsUtf8 => false,
         }
     }
 
@@ -1065,6 +1078,8 @@ impl BitArrayTest {
 
                 references
             }
+
+            BitArrayTest::IsUtf8 => vec![],
         }
     }
 }
@@ -1517,6 +1532,9 @@ impl BitArrayTest {
                 BitArrayTest::SegmentIsFiniteFloat { read_action: other },
             ) => one == other,
             (BitArrayTest::SegmentIsFiniteFloat { .. }, _) => false,
+
+            (BitArrayTest::IsUtf8, BitArrayTest::IsUtf8) => true,
+            (BitArrayTest::IsUtf8, _) => false,
         }
     }
 
@@ -3740,29 +3758,41 @@ impl CaseToCompile {
             // final segment is special as it could require a specific size, or
             // be a catch all that matches with any number of remaining bits.
             let is_last_segment = i + 1 == segments_count;
-            match &segment_size {
-                ReadSize::RemainingBits => (),
-                ReadSize::RemainingBytes => {
-                    // `(bitSize - c) % 8 === 0` is equivalent to
-                    // `(bitSize - (c % 8)) % 8 === 0` for any constant c,
-                    // because c ≡ c%8 (mod 8). This ensures structurally
-                    // identical JS checks regardless of the accumulated offset.
-                    let mut normalized = previous_end.clone();
-                    normalized.constant = &normalized.constant % 8;
-                    tests.push_back(BitArrayTest::CatchAllIsBytes {
-                        size_so_far: normalized,
-                    });
-                }
-                ReadSize::ConstantBits(_)
-                | ReadSize::VariableBits { .. }
-                | ReadSize::BinaryOperator { .. } => {
-                    let size = previous_end.clone().add_size(&segment_size);
-                    let operator = if is_last_segment {
-                        SizeOperator::Equal
-                    } else {
-                        SizeOperator::GreaterEqual
-                    };
-                    tests.push_back(BitArrayTest::Size(SizeTest { operator, size }));
+
+            // A final wildcard segment with the utf8 option is validated by
+            // an `IsUtf8` test on the whole bit array rather than a size
+            // check, since the well-formedness of a UTF-8 sequence is not a
+            // question of how many bits it contains.
+            if is_last_segment
+                && matches!(segment.value.as_ref(), ast::Pattern::Discard { .. })
+                && segment.has_utf8_option()
+            {
+                tests.push_back(BitArrayTest::IsUtf8);
+            } else {
+                match &segment_size {
+                    ReadSize::RemainingBits => (),
+                    ReadSize::RemainingBytes => {
+                        // `(bitSize - c) % 8 === 0` is equivalent to
+                        // `(bitSize - (c % 8)) % 8 === 0` for any constant c,
+                        // because c ≡ c%8 (mod 8). This ensures structurally
+                        // identical JS checks regardless of the accumulated offset.
+                        let mut normalized = previous_end.clone();
+                        normalized.constant = &normalized.constant % 8;
+                        tests.push_back(BitArrayTest::CatchAllIsBytes {
+                            size_so_far: normalized,
+                        });
+                    }
+                    ReadSize::ConstantBits(_)
+                    | ReadSize::VariableBits { .. }
+                    | ReadSize::BinaryOperator { .. } => {
+                        let size = previous_end.clone().add_size(&segment_size);
+                        let operator = if is_last_segment {
+                            SizeOperator::Equal
+                        } else {
+                            SizeOperator::GreaterEqual
+                        };
+                        tests.push_back(BitArrayTest::Size(SizeTest { operator, size }));
+                    }
                 }
             }
 

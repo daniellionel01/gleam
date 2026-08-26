@@ -329,12 +329,12 @@ fn match_case_utf8_wildcard() {
     assert_js!(
         r#"
 pub fn go(x) {
-    case x {
+  case x {
     <<_:utf8>> -> 1
     _ -> 2
-    }
+  }
 }
-   "#,
+"#,
     );
 }
 
