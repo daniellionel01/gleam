@@ -169,6 +169,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arbitrary"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
+
+[[package]]
 name = "arc-swap"
 version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1285,6 +1291,29 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "fuzzing-cli"
+version = "0.0.0"
+dependencies = [
+ "fuzzing-core",
+ "gleam-core",
+ "tempfile",
+]
+
+[[package]]
+name = "fuzzing-core"
+version = "0.1.0"
+dependencies = [
+ "arbitrary",
+ "camino",
+ "ecow",
+ "erlang-generation",
+ "gleam-core",
+ "im",
+ "regex",
+ "src-span",
 ]
 
 [[package]]
