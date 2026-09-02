@@ -28,7 +28,7 @@ export const List: {
   new <T>(): List<T>;
   /** @deprecated */
   fromArray<T>(array: Array<T>): List<T>;
-}
+};
 export function List$Empty<T>(): List<T>;
 export function List$NonEmpty<T>(head: T, tail: List<T>): List<T>;
 export function List$isEmpty(list: any): list is List<unknown>;
@@ -36,9 +36,9 @@ export function List$isNonEmpty(list: any): list is List<unknown>;
 export function List$NonEmpty$first<T>(list: List<T>): T | undefined;
 export function List$NonEmpty$rest<T>(list: List<T>): List<T> | undefined;
 /** @deprecated */
-export class Empty<T = never> extends List<T> { }
+export class Empty<T = never> extends List<T> {}
 /** @deprecated */
-export class NonEmpty<T> extends List<T> { }
+export class NonEmpty<T> extends List<T> {}
 
 export interface BitArray {
   readonly __gleam: unique symbol;
@@ -65,13 +65,9 @@ export interface BitArray {
 /** @deprecated */
 export const BitArray: {
   /** @deprecated */
-  new(buffer: Uint8Array, bitSize?: number, bitOffset?: number): BitArray;
-}
-export function BitArray$BitArray(
-  buffer: Uint8Array,
-  bitSize?: number,
-  bitOffset?: number,
-): BitArray;
+  new (buffer: Uint8Array, bitSize?: number, bitOffset?: number): BitArray;
+};
+export function BitArray$BitArray(buffer: Uint8Array, bitSize?: number, bitOffset?: number): BitArray;
 export function BitArray$isBitArray(value: any): value is BitArray;
 export function BitArray$BitArray$data(value: BitArray): DataView;
 
@@ -83,8 +79,8 @@ export interface UtfCodepoint {
 /** @deprecated */
 export const UtfCodepoint: {
   /** @deprecated */
-  new(value: string): UtfCodepoint
-}
+  new (value: string): UtfCodepoint;
+};
 
 export interface Result<T, E> {
   readonly __gleam: unique symbol;
@@ -93,8 +89,8 @@ export interface Result<T, E> {
 }
 /** @deprecated */
 export const Result: {
-  new <T, E>(): Result<T, E>
-}
+  new <T, E>(): Result<T, E>;
+};
 export function Result$Ok<T, E>(value: T): Result<T, E>;
 export function Result$Error<T, E>(error: E): Result<T, E>;
 export function Result$isError(data: any): data is Result<unknown, unknown>;
@@ -139,8 +135,17 @@ export function sizedInt(
   /** @deprecated */
   size: number,
   /** @deprecated */
-  isBigEndian: boolean
+  isBigEndian: boolean,
 ): Uint8Array | BitArray;
+
+/** @deprecated */
+export function bitArrayUtf8SequenceSize(bitArray: BitArray, start: number): number;
+
+/** @deprecated */
+export function bitArrayUtf16SequenceSize(bitArray: BitArray, start: number, isBigEndian: boolean): number;
+
+/** @deprecated */
+export function bitArrayUtf32SequenceSize(bitArray: BitArray, start: number, isBigEndian: boolean): number;
 
 /** @deprecated */
 export function stringBits(string: string): Uint8Array;
@@ -149,11 +154,7 @@ export function stringBits(string: string): Uint8Array;
 export function codepointBits(codepoint: UtfCodepoint): Uint8Array;
 
 /** @deprecated */
-export function sizedFloat(
-  value: number,
-  size: number,
-  isBigEndian: boolean
-): Uint8Array;
+export function sizedFloat(value: number, size: number, isBigEndian: boolean): Uint8Array;
 
 /** @deprecated */
 export function isEqual(a: any, b: any): boolean;
