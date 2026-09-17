@@ -1,0 +1,363 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 The Gleam contributors
+
+//! Fuzzing binary: generate well-typed Gleam programs and run them on both
+//! backends, reporting divergences.
+//!
+//! Usage (run from the workspace root):
+//!   cargo run -p fuzzing-cli -- run <seed>          generate + compare one program
+//!   cargo run -p fuzzing-cli -- batch <start> <count>
+//!   cargo run -p fuzzing-cli -- print <seed>        print the generated source
+//!   cargo run -p fuzzing-cli -- --gleam-bin <path> ...
+//!
+//! By default `fuzzing-cli` looks for a Gleam build at
+//! `<repo>/target/release/gleam` (the local nightly from this repository).
+//! If that doesn't exist, it falls back to `gleam` from $PATH. Override
+//! either with `--gleam-bin <path>` or the `FUZZ_GLEAM_BIN` environment
+//! variable. The path actually used is printed at startup.
+//!
+//! Exit codes: 0 = match (or batch completed), 1 = mismatch, 2 = usage error.
+
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+
+use fuzzing_core::generator::Module;
+use fuzzing_core::value;
+use gleam_core::build::Target;
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let (gleam_bin, rest) = resolve_gleam_bin(&args);
+    match rest.get(0).map(String::as_str) {
+        Some("run") => cmd_run(&rest[1..], &gleam_bin),
+        Some("batch") => cmd_batch(&rest[1..], &gleam_bin),
+        Some("print") => cmd_print(&rest[1..]),
+        _ => {
+            eprintln!(
+                "usage:\n  cargo run -p fuzzing-cli -- run <seed>\n  cargo run -p fuzzing-cli -- batch <start> <count>\n  cargo run -p fuzzing-cli -- print <seed>\n  cargo run -p fuzzing-cli -- --gleam-bin <path> ..."
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
+fn resolve_gleam_bin(args: &[String]) -> (PathBuf, Vec<String>) {
+    let mut override_path: Option<PathBuf> = None;
+    let mut rest_start = args.len();
+    for (i, a) in args.iter().enumerate() {
+        if a == "--gleam-bin" {
+            if let Some(path) = args.get(i + 1) {
+                override_path = Some(PathBuf::from(path));
+                rest_start = i + 2;
+                break;
+            }
+        }
+        if let Some(value) = a.strip_prefix("--gleam-bin=") {
+            override_path = Some(PathBuf::from(value));
+            rest_start = i + 1;
+            break;
+        }
+    }
+    if override_path.is_none() {
+        if let Ok(value) = env::var("FUZZ_GLEAM_BIN") {
+            override_path = Some(PathBuf::from(value));
+        }
+    }
+    let rest: Vec<String> = if rest_start >= args.len() {
+        args[1..].to_vec()
+    } else if override_path.is_some() {
+        args[rest_start..].to_vec()
+    } else {
+        args[1..].to_vec()
+    };
+    let bin = override_path.unwrap_or_else(default_gleam_bin);
+    (bin, rest)
+}
+
+fn default_gleam_bin() -> PathBuf {
+    // Walk up from CWD looking for a sibling target/release/gleam.
+    let mut dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    loop {
+        let candidate = dir.join("target").join("release").join("gleam");
+        if candidate.is_file() {
+            return candidate;
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    PathBuf::from("gleam")
+}
+
+fn cmd_run(args: &[String], gleam_bin: &std::path::Path) {
+    let seed: u64 = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            eprintln!("usage: cargo run -p fuzzing-cli -- run <seed>");
+            std::process::exit(2);
+        });
+
+    let module = Module::from_seed(seed);
+    let outcome = run_and_compare(&module, gleam_bin);
+
+    println!("=== fuzz ===");
+    println!("gleam:       {}", gleam_bin.display());
+    println!("seed:        {seed}");
+    println!("erlang exit: {}", outcome.erl_status);
+    println!("nodejs exit: {}", outcome.js_status);
+    // ANSI colors: green for match, yellow for skip, red for divergence.
+    // The codes are inert when piped to a non-terminal, so CI logs stay
+    // readable.
+    const RED: &str = "\x1b[31m";
+    const GREEN: &str = "\x1b[32m";
+    const YELLOW: &str = "\x1b[33m";
+    const RESET: &str = "\x1b[0m";
+    if outcome.matched {
+        println!("match:       {GREEN}OK{RESET}");
+    } else if outcome.skip_note.is_some() {
+        println!("match:       {YELLOW}SKIP{RESET}");
+    } else {
+        println!("match:       {RED}NO{RESET}");
+    }
+    if let Some(note) = &outcome.skip_note {
+        println!("note:        {note} (skipped in batch)");
+    }
+    if outcome.erl_status == 0 && outcome.js_status == 0 {
+        println!("\n--- values ---");
+        let max = outcome.erl_values.len().max(outcome.js_values.len());
+        for i in 0..max {
+            let erl = outcome
+                .erl_values
+                .get(i)
+                .map(|v| format!("{v:?}"))
+                .unwrap_or_else(|| "<missing>".into());
+            let js = outcome
+                .js_values
+                .get(i)
+                .map(|v| format!("{v:?}"))
+                .unwrap_or_else(|| "<missing>".into());
+            let (mark, value_color) = if value::matches_cross_target(
+                outcome.erl_values.get(i).unwrap_or(&value::Value::Nil),
+                outcome.js_values.get(i).unwrap_or(&value::Value::Nil),
+            ) {
+                ("==", "")
+            } else {
+                ("!=", RED)
+            };
+            let trailing = if value_color.is_empty() { "" } else { RESET };
+            println!(
+                "[{i}] {mark} erl={value_color}{erl}{trailing}  js={value_color}{js}{trailing}"
+            );
+        }
+    } else if outcome.skip_note.is_none() {
+        // One or both backends crashed. Dump raw output so the user can
+        // see the failure.
+        println!("\n--- erlang output ---\n{}", outcome.erl_raw);
+        println!("--- nodejs output ---\n{}", outcome.js_raw);
+    }
+
+    std::process::exit(if outcome.matched || outcome.skip_note.is_some() {
+        0
+    } else {
+        1
+    });
+}
+
+fn cmd_print(args: &[String]) {
+    let seed: u64 = match args.first().and_then(|s| s.parse().ok()) {
+        Some(s) => s,
+        None => {
+            eprintln!("usage: cargo run -p fuzzing-cli -- print <seed>");
+            std::process::exit(2);
+        }
+    };
+    let module = Module::from_seed(seed);
+    print!("{}", module.to_source());
+}
+
+fn cmd_batch(args: &[String], gleam_bin: &std::path::Path) {
+    let start: u64 = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            eprintln!("usage: cargo run -p fuzzing-cli -- batch <start> <count>");
+            std::process::exit(2);
+        });
+    let count: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
+        eprintln!("usage: cargo run -p fuzzing-cli -- batch <start> <count>");
+        std::process::exit(2);
+    });
+
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let corpus_dir = base.join("corpus").join("fuzz");
+    let artifacts_dir = base.join("artifacts").join("fuzz");
+    fs::create_dir_all(&corpus_dir).expect("create corpus dir");
+    fs::create_dir_all(&artifacts_dir).expect("create artifacts dir");
+
+    eprintln!("[fuzzing-cli] gleam: {}", gleam_bin.display());
+    eprintln!("[fuzzing-cli] seeds {start}..{}", start + count - 1);
+    let mut mismatches = 0u64;
+    let mut skipped = 0u64;
+    let mut ran = 0u64;
+
+    for seed in start..start + count {
+        let module = Module::from_seed(seed);
+        let src = module.to_source();
+
+        let corpus_path = corpus_dir.join(format!("seed_{seed}.gleam"));
+        fs::write(&corpus_path, &src).expect("write corpus");
+
+        let outcome = run_and_compare(&module, gleam_bin);
+
+        if !outcome.matched {
+            if outcome.skip_note.is_some() {
+                skipped += 1;
+                continue;
+            }
+            let artifact_path = artifacts_dir.join(format!("seed_{seed}.gleam"));
+            fs::write(&artifact_path, &src).expect("write artifact");
+            eprintln!(
+                "[fuzzing-cli] DIVERGENCE seed {seed} -> erlang:{} nodejs:{}",
+                outcome.erl_status, outcome.js_status,
+            );
+            mismatches += 1;
+        }
+
+        ran += 1;
+        if ran % 10 == 0 {
+            eprintln!("[fuzzing-cli] {ran}/{count} run, {mismatches} mismatches, {skipped} skipped");
+        }
+    }
+
+    eprintln!("[fuzzing-cli] done: {ran} programs, {mismatches} mismatch(es), {skipped} skipped");
+}
+
+struct Outcome {
+    erl_status: i32,
+    js_status: i32,
+    matched: bool,
+    skip_note: Option<String>,
+    erl_raw: String,
+    js_raw: String,
+    erl_values: Vec<value::Value>,
+    js_values: Vec<value::Value>,
+}
+
+fn run_and_compare(module: &Module, gleam_bin: &std::path::Path) -> Outcome {
+    let src = module.to_source();
+    let work = tempfile::tempdir().expect("create temp dir");
+    let project_dir = work.path();
+
+    let src_dir = project_dir.join("src");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::write(src_dir.join("main.gleam"), &src).expect("write main.gleam");
+    fs::write(project_dir.join("gleam.toml"), "name = \"fuzzing_case\"\n")
+        .expect("write gleam.toml");
+
+    let run = |target: &str, extra: &[&str]| -> (String, i32) {
+        let mut cmd = Command::new(gleam_bin);
+        cmd.arg("run")
+            .arg("--target")
+            .arg(target)
+            .arg("--module")
+            .arg("main")
+            .args(extra)
+            .current_dir(project_dir);
+
+        let out = cmd.output().expect("run gleam");
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        (format!("{stdout}{stderr}"), out.status.code().unwrap_or(-1))
+    };
+
+    let (erl_raw, erl_status) = run("erlang", &[]);
+    let (js_raw, js_status) = run("javascript", &["--runtime", "nodejs"]);
+
+    let erl_ok = erl_status == 0;
+    let js_ok = js_status == 0;
+
+    // Use the source's echo line numbers as markers so we only extract
+    // output from actual `echo` calls, ignoring compiler warning noise.
+    let echo_lines = value::echo_line_numbers(&src);
+
+    let erl_values = if erl_ok {
+        value::parse_output_with_echo_lines(&erl_raw, Target::Erlang, &echo_lines)
+    } else {
+        Vec::new()
+    };
+    let js_values = if js_ok {
+        value::parse_output_with_echo_lines(&js_raw, Target::JavaScript, &echo_lines)
+    } else {
+        Vec::new()
+    };
+
+    let matched = if erl_ok && js_ok {
+        value::outputs_match_cross_target(&erl_values, &js_values)
+    } else if !erl_ok && !js_ok {
+        value::strip_build_noise(&erl_raw) == value::strip_build_noise(&js_raw)
+    } else {
+        false
+    };
+
+    let skip_note = known_skips(&erl_raw, &js_raw, erl_status, js_status);
+
+    Outcome {
+        erl_status,
+        js_status,
+        matched,
+        skip_note,
+        erl_raw,
+        js_raw,
+        erl_values,
+        js_values,
+    }
+}
+
+// Add a new entry here to filter a known issue. Each rule returns Some(note)
+// when the result should be skipped with that note, or None to defer to
+// the next rule / treat as a real result.
+fn known_skips(erl_raw: &str, js_raw: &str, erl_status: i32, js_status: i32) -> Option<String> {
+    let erl_ok = erl_status == 0;
+    let js_ok = js_status == 0;
+
+    // https://github.com/erlang/otp/issues/11494
+    if !erl_ok && js_ok && is_erlang_otp_issue_11494(erl_raw) {
+        return Some("otp issue #11494".into());
+    }
+
+    // https://github.com/gleam-lang/gleam/issues/6182
+    if erl_ok && !js_ok && is_gleam_issue_6182(js_raw) {
+        return Some("gleam issue #6182".into());
+    }
+
+    // https://github.com/gleam-lang/gleam/issues/6212
+    if erl_ok && !js_ok && is_gleam_issue_6212(js_raw) {
+        return Some("gleam issue #6212".into());
+    }
+
+    None
+}
+
+// https://github.com/erlang/otp/issues/11494
+fn is_erlang_otp_issue_11494(raw: &str) -> bool {
+    raw.contains("Internal consistency check failed")
+        && raw.contains("call_only")
+        && raw.contains("bad_arg_type")
+        && raw.contains("{x,")
+        && raw.contains("t_union")
+        && raw.contains("t_bitstring")
+}
+
+// https://github.com/gleam-lang/gleam/issues/6182
+fn is_gleam_issue_6182(raw: &str) -> bool {
+    raw.contains("SyntaxError: Unexpected token '&&'")
+        || raw.contains("SyntaxError: Unexpected token ')'")
+}
+
+// https://github.com/gleam-lang/gleam/issues/6212
+fn is_gleam_issue_6212(raw: &str) -> bool {
+    raw.contains("TypeError:") && raw.contains("is not a function")
+}
